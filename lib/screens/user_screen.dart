@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import '../services/auth_service.dart';
+import 'login_screen.dart';
 
 class UserScreen extends StatelessWidget {
   final Map<String, dynamic> userData;
@@ -46,9 +48,20 @@ class UserScreen extends StatelessWidget {
 
             const Spacer(),
 
+            // 🔥 LOGOUT REAL
             Center(
               child: ElevatedButton(
-                onPressed: () => Navigator.pop(context),
+                onPressed: () async {
+                  await AuthService.logout();   // ⬅ BORRA token + usuario guardados
+
+                  if (context.mounted) {
+                    Navigator.pushAndRemoveUntil(
+                      context,
+                      MaterialPageRoute(builder: (_) => const LoginScreen()),
+                      (route) => false,  // ⬅ Limpia todo el stack (no se puede volver atrás)
+                    );
+                  }
+                },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.deepPurple,
                   padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 40),
@@ -56,7 +69,8 @@ class UserScreen extends StatelessWidget {
                     borderRadius: BorderRadius.circular(12),
                   ),
                 ),
-                child: const Text("Cerrar sesión", style: TextStyle(fontSize: 18)),
+                child: const Text("Cerrar sesión",
+                    style: TextStyle(fontSize: 18)),
               ),
             )
           ],

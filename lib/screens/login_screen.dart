@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
-import 'user_screen.dart';  // 👈 Importa la pantalla de usuario
+import 'user_screen.dart';  
+import '../services/auth_service.dart';
+
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -28,8 +30,14 @@ class _LoginScreenState extends State<LoginScreen> {
       );
 
       // 👉 Guardar token (más adelante podemos usar SharedPreferences)
-      final token = data['token'];
-      print('Token recibido: $token');
+     final token = data['token'];
+final user = data['usuario'];
+
+// Guardar token + usuario en SharedPreferences
+await AuthService.saveSession(token, user);
+
+print('Token guardado localmente');
+print('Usuario guardado: $user');
 
       // 👉 Navegar a la pantalla que muestra los datos del usuario
       if (mounted) {
