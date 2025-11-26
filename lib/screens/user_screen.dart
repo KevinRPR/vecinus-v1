@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
 import 'login_screen.dart';
+import 'mis_inmuebles_screen.dart';
 
 class UserScreen extends StatelessWidget {
   final Map<String, dynamic> userData;
@@ -9,8 +10,8 @@ class UserScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final usuario = userData['usuario'];
-    final token = userData['token'];
+    final usuario = userData['usuario'] ?? {};
+    final token = userData['token'] ?? '';
 
     return Scaffold(
       appBar: AppBar(
@@ -28,13 +29,12 @@ class UserScreen extends StatelessWidget {
             ),
             const SizedBox(height: 20),
 
-            _infoRow("ID", usuario["id"].toString()),
-            _infoRow("Nombre", usuario["nombre"]),
-            _infoRow("Correo", usuario["correo"]),
-            _infoRow("Usuario (correo)", usuario["user"]),
-            _infoRow("Perfil", usuario["perfil"]),
+            _infoRow("ID", usuario["id"]?.toString() ?? "-"),
+            _infoRow("Nombre", usuario["nombre"] ?? "-"),
+            _infoRow("Correo", usuario["correo"] ?? "-"),
 
-            const SizedBox(height: 30),
+            const SizedBox(height: 20),
+
             const Text(
               "Token:",
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
@@ -46,25 +46,48 @@ class UserScreen extends StatelessWidget {
               style: const TextStyle(fontSize: 14, color: Colors.deepPurple),
             ),
 
+            const SizedBox(height: 30),
+
+            // 🔥 BOTÓN NUEVO: MIS INMUEBLES
+            Center(
+              child: ElevatedButton(
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const MisInmueblesScreen()),
+                  );
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.blue,
+                  padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 40),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                child: const Text("Mis Inmuebles", style: TextStyle(fontSize: 18)),
+              ),
+            ),
+
             const Spacer(),
 
-            // 🔥 LOGOUT REAL
+            // 🔥 BOTÓN EXISTENTE: CERRAR SESIÓN
             Center(
               child: ElevatedButton(
                 onPressed: () async {
-                  await AuthService.logout();   // ⬅ BORRA token + usuario guardados
+                  await AuthService.logout();
 
                   if (context.mounted) {
                     Navigator.pushAndRemoveUntil(
                       context,
                       MaterialPageRoute(builder: (_) => const LoginScreen()),
-                      (route) => false,  // ⬅ Limpia todo el stack (no se puede volver atrás)
+                      (route) => false,
                     );
                   }
                 },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.deepPurple,
-                  padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 40),
+                  padding:
+                      const EdgeInsets.symmetric(vertical: 12, horizontal: 40),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),
                   ),
