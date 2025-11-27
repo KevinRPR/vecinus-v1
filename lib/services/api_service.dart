@@ -5,11 +5,12 @@ import '../models/inmueble.dart';
 
 class ApiService {
   // 🌐 Dominio real de tu API
-  static const String baseUrl = 'https://rhodiumdev.com/condominio/movil';
+  static const String baseUrl = 'https://rhodiumdev.com/condominio/movil/';
+
 
   // 🔹 LOGIN
   static Future<Map<String, dynamic>> login(String email, String password) async {
-    final url = Uri.parse('$baseUrl/login.php');
+    final url = Uri.parse('${baseUrl}login.php');
 
     final response = await http.post(
       url,
@@ -32,7 +33,7 @@ class ApiService {
 
   // 🔹 OBTENER MIS INMUEBLES
   static Future<List<Inmueble>> getMisInmuebles(String token) async {
-    final url = Uri.parse('$baseUrl/mis_inmuebles.php');
+    final url = Uri.parse('${baseUrl}mis_inmuebles.php');
 
     final response = await http.post(
       url,
