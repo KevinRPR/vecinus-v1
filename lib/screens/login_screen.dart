@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
-import 'user_screen.dart';  
 import '../services/auth_service.dart';
-
+import '../models/user.dart';
+import 'dashboard_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -29,46 +29,37 @@ class _LoginScreenState extends State<LoginScreen> {
         passwordController.text.trim(),
       );
 
-      // 👉 Guardar token (más adelante podemos usar SharedPreferences)
-     final token = data['token'];
-final user = data['usuario'];
+      final token = data['token'];
+      final userJson = data['usuario'];
+      final user = User.fromJson(userJson);
 
-// Guardar token + usuario en SharedPreferences
-await AuthService.saveSession(token, user);
+      await AuthService.saveSession(token, userJson);
 
-print('Token guardado localmente');
-print('Usuario guardado: $user');
-
-      // 👉 Navegar a la pantalla que muestra los datos del usuario
       if (mounted) {
-        Navigator.push(
+        Navigator.pushReplacement(
           context,
           MaterialPageRoute(
-            builder: (context) => UserScreen(userData: data),
+            builder: (_) => DashboardScreen(
+              user: user,
+              token: token,
+            ),
           ),
         );
       }
 
     } catch (e) {
-      // MEJORAR el mensaje de error
       String message = e.toString();
 
       if (message.contains("401")) {
-        message = "Credenciales incorrectas o usuario no encontrado.";
+        message = "Credenciales incorrectas.";
       } else if (message.contains("403")) {
-        message = "El usuario está inactivo.";
-      } else if (message.contains("500")) {
-        message = "Error interno del servidor.";
+        message = "Usuario inactivo.";
       }
 
-      setState(() {
-        error = message;
-      });
+      setState(() => error = message);
 
     } finally {
-      setState(() {
-        loading = false;
-      });
+      setState(() => loading = false);
     }
   }
 
@@ -77,28 +68,27 @@ print('Usuario guardado: $user');
     return Scaffold(
       appBar: AppBar(title: const Text('Login')),
       body: Padding(
-        padding: const EdgeInsets.all(20.0),
+        padding: const EdgeInsets.all(20),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             TextField(
               controller: emailController,
-              decoration: const InputDecoration(labelText: 'Correo electrónico'),
+              decoration: const InputDecoration(labelText: 'Correo'),
             ),
+
             const SizedBox(height: 12),
+
             TextField(
               controller: passwordController,
-              obscureText: true,
               decoration: const InputDecoration(labelText: 'Contraseña'),
+              obscureText: true,
             ),
+
             const SizedBox(height: 24),
 
             if (error != null)
-              Text(
-                error!,
-                style: const TextStyle(color: Colors.red, fontSize: 16),
-                textAlign: TextAlign.center,
-              ),
+              Text(error!, style: const TextStyle(color: Colors.red)),
 
             const SizedBox(height: 12),
 
@@ -106,7 +96,7 @@ print('Usuario guardado: $user');
               onPressed: loading ? null : login,
               child: loading
                   ? const CircularProgressIndicator(color: Colors.white)
-                  : const Text('Iniciar sesión'),
+                  : const Text("Iniciar sesión"),
             ),
           ],
         ),

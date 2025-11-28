@@ -1,22 +1,22 @@
 import 'package:flutter/material.dart';
-import 'screens/splash_screen.dart';
+import 'screens/login_screen.dart';
 
 void main() {
-  runApp(const VecinusApp());
+  runApp(const MyApp());
 }
 
-class VecinusApp extends StatelessWidget {
-  const VecinusApp({super.key});
+class MyApp extends StatelessWidget {
+  const MyApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: "Vecinus App",
+      title: 'Vecinus App',
       theme: ThemeData(
-        primarySwatch: Colors.deepPurple,
+        primarySwatch: Colors.blue,
       ),
-      home: const SplashScreen(),
+      home: const LoginScreen(),  
     );
   }
 }

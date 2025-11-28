@@ -4,11 +4,9 @@ import 'package:http/http.dart' as http;
 import '../models/inmueble.dart';
 
 class ApiService {
-  // 🌐 Dominio real de tu API
   static const String baseUrl = 'https://rhodiumdev.com/condominio/movil/';
 
-
-  // 🔹 LOGIN
+  // LOGIN
   static Future<Map<String, dynamic>> login(String email, String password) async {
     final url = Uri.parse('${baseUrl}login.php');
 
@@ -18,20 +16,16 @@ class ApiService {
       body: jsonEncode({'email': email, 'password': password}),
     );
 
-    if (response.statusCode == 200) {
-      final data = jsonDecode(response.body);
+    final data = jsonDecode(response.body);
 
-      if (data['success'] == true) {
-        return data;
-      } else {
-        throw Exception(data['error'] ?? 'Error desconocido');
-      }
+    if (response.statusCode == 200 && data['success'] == true) {
+      return data;
     } else {
-      throw Exception('Error HTTP ${response.statusCode}');
+      throw Exception(data['error'] ?? 'Error desconocido');
     }
   }
 
-  // 🔹 OBTENER MIS INMUEBLES
+  // OBTENER INMUEBLES DEL USUARIO
   static Future<List<Inmueble>> getMisInmuebles(String token) async {
     final url = Uri.parse('${baseUrl}mis_inmuebles.php');
 
@@ -41,17 +35,14 @@ class ApiService {
       body: jsonEncode({'token': token}),
     );
 
-    if (response.statusCode == 200) {
-      final data = jsonDecode(response.body);
+    final data = jsonDecode(response.body);
+    print("API inmuebles: $data");
 
-      if (data['success'] == true) {
-        final List inmueblesJson = data["inmuebles"];
-        return inmueblesJson.map((e) => Inmueble.fromJson(e)).toList();
-      } else {
-        throw Exception(data['error'] ?? 'Error desconocido');
-      }
+    if (response.statusCode == 200 && data['success'] == true) {
+      final List lista = data['inmuebles'];
+      return lista.map((e) => Inmueble.fromJson(e)).toList();
     } else {
-      throw Exception("Error HTTP ${response.statusCode}");
+      throw Exception(data['error'] ?? 'Error desconocido');
     }
   }
 }

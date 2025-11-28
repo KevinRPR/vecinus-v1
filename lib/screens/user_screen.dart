@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
-import '../services/auth_service.dart';
-import 'login_screen.dart';
-import 'mis_inmuebles_screen.dart';
+import '../models/user.dart';
+import 'dashboard_screen.dart';
 
 class UserScreen extends StatelessWidget {
   final Map<String, dynamic> userData;
@@ -10,121 +9,59 @@ class UserScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final usuario = userData['usuario'] ?? {};
-    final token = userData['token'] ?? '';
+    final user = User.fromJson(userData['usuario']);
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text("Datos del Usuario"),
-        backgroundColor: Colors.deepPurple,
+        title: Text("Mi Perfil"),
+        centerTitle: true,
       ),
+
       body: Padding(
-        padding: const EdgeInsets.all(20.0),
+        padding: const EdgeInsets.all(20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              "Información de la cuenta",
+
+            Text(
+              "Bienvenido, ${user.nombre} ${user.apellido}",
               style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
             ),
-            const SizedBox(height: 20),
 
-            _infoRow("ID", usuario["id"]?.toString() ?? "-"),
-            _infoRow("Nombre", usuario["nombre"] ?? "-"),
-            _infoRow("Correo", usuario["correo"] ?? "-"),
+            SizedBox(height: 20),
 
-            const SizedBox(height: 20),
+            Text("Correo: ${user.correo}", style: TextStyle(fontSize: 16)),
+            SizedBox(height: 6),
 
-            const Text(
-              "Token:",
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 10),
+            Text("ID Usuario: ${user.id}", style: TextStyle(fontSize: 16)),
+            SizedBox(height: 20),
 
-            SelectableText(
-              token,
-              style: const TextStyle(fontSize: 14, color: Colors.deepPurple),
-            ),
+            SizedBox(height: 30),
 
-            const SizedBox(height: 30),
-
-            // 🔥 BOTÓN NUEVO: MIS INMUEBLES
             Center(
               child: ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  padding: EdgeInsets.symmetric(horizontal: 30, vertical: 14),
+                ),
                 onPressed: () {
                   Navigator.push(
                     context,
-                    MaterialPageRoute(builder: (_) => const MisInmueblesScreen()),
+                    MaterialPageRoute(
+                      builder: (_) => DashboardScreen(
+                        user: user,
+                        token: userData['token'],
+                      ),
+                    ),
                   );
                 },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.blue,
-                  padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 40),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
+                child: Text(
+                  "Ir a Mis Inmuebles",
+                  style: TextStyle(fontSize: 16),
                 ),
-                child: const Text("Mis Inmuebles", style: TextStyle(fontSize: 18)),
               ),
             ),
-
-            const Spacer(),
-
-            // 🔥 BOTÓN EXISTENTE: CERRAR SESIÓN
-            Center(
-              child: ElevatedButton(
-                onPressed: () async {
-                  await AuthService.logout();
-
-                  if (context.mounted) {
-                    Navigator.pushAndRemoveUntil(
-                      context,
-                      MaterialPageRoute(builder: (_) => const LoginScreen()),
-                      (route) => false,
-                    );
-                  }
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.deepPurple,
-                  padding:
-                      const EdgeInsets.symmetric(vertical: 12, horizontal: 40),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-                child: const Text("Cerrar sesión",
-                    style: TextStyle(fontSize: 18)),
-              ),
-            )
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _infoRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Row(
-        children: [
-          Text(
-            "$label:",
-            style: const TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(width: 10),
-          Flexible(
-            child: Text(
-              value,
-              style: const TextStyle(
-                fontSize: 18,
-                color: Colors.black87,
-              ),
-            ),
-          ),
-        ],
       ),
     );
   }
