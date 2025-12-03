@@ -1,239 +1,438 @@
 import 'package:flutter/material.dart';
+
 import '../models/inmueble.dart';
 import '../models/user.dart';
-import '../services/api_service.dart';
-import 'user_screen.dart';
 
-class DashboardScreen extends StatefulWidget {
+class DashboardScreen extends StatelessWidget {
   final User user;
-  final String token;
+  final List<Inmueble> inmuebles;
+  final bool loading;
+  final Future<void> Function() onRefresh;
+  final VoidCallback onViewPayments;
 
-  DashboardScreen({required this.user, required this.token});
+  const DashboardScreen({
+    super.key,
+    required this.user,
+    required this.inmuebles,
+    required this.loading,
+    required this.onRefresh,
+    required this.onViewPayments,
+  });
 
-  @override
-  _DashboardScreenState createState() => _DashboardScreenState();
-}
+  double get _totalDeuda => inmuebles.fold(
+        0,
+        (sum, item) =>
+            sum +
+            (double.tryParse(
+                  (item.deudaActual ?? '').replaceAll(',', '.'),
+                ) ??
+                0),
+      );
 
-class _DashboardScreenState extends State<DashboardScreen> {
-  List<Inmueble> inmuebles = [];
-  bool loading = true;
+  int _countByStatus(EstadoInmueble status) =>
+      inmuebles.where((i) => i.estado == status).length;
 
-  @override
-  void initState() {
-    super.initState();
-    cargarInmuebles();
+  DateTime? _parseDate(String? raw) {
+    if (raw == null || raw.trim().isEmpty) return null;
+    return DateTime.tryParse(raw);
   }
 
-  Future<void> cargarInmuebles() async {
-    try {
-      final data = await ApiService.getMisInmuebles(widget.token);
-      setState(() {
-        inmuebles = data;
-        loading = false;
-      });
-    } catch (e) {
-      print("Error cargando inmuebles: $e");
-      setState(() => loading = false);
-    }
+  Inmueble? get _proximoPago {
+    final pagos = inmuebles
+        .where((i) => _parseDate(i.proximaFechaPago) != null)
+        .toList();
+    pagos.sort((a, b) {
+      final dateA = _parseDate(a.proximaFechaPago)!;
+      final dateB = _parseDate(b.proximaFechaPago)!;
+      return dateA.compareTo(dateB);
+    });
+    return pagos.isEmpty ? null : pagos.first;
+  }
+
+  List<Inmueble> get _inmueblesCruciales {
+    final list = List<Inmueble>.from(inmuebles);
+    list.sort((a, b) {
+      final deudaA =
+          double.tryParse((a.deudaActual ?? '').replaceAll(',', '.')) ?? 0;
+      final deudaB =
+          double.tryParse((b.deudaActual ?? '').replaceAll(',', '.')) ?? 0;
+      return deudaB.compareTo(deudaA);
+    });
+    return list.take(3).toList();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xfff3f4f6),
-
-      // 🔹 BARRA SUPERIOR (BOTÓN DE PERFIL)
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        actions: [
-          IconButton(
-            icon: Icon(Icons.person, color: Colors.black87),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => UserScreen(
-                    userData: {
-                      "usuario": {
-                        "id_usuario": widget.user.id,
-                        "nombre": widget.user.nombre,
-                        "apellido": widget.user.apellido,
-                        "correo": widget.user.correo,
-                      },
-                      "token": widget.token,
-                    },
-                  ),
-                ),
-              );
-            },
-          )
-        ],
+        title: const Text('Resumen'),
+        centerTitle: true,
       ),
-
       body: loading
-          ? Center(child: CircularProgressIndicator())
-          : SingleChildScrollView(
-              padding: EdgeInsets.symmetric(horizontal: 20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  SizedBox(height: 10),
-
-                  // 🔹 SALUDO PRINCIPAL
-                  Text(
-                    "Hola, ${widget.user.nombre} 👋",
-                    style: TextStyle(
-                      fontSize: 26,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xff203047),
+          ? const Center(child: CircularProgressIndicator())
+          : RefreshIndicator(
+              onRefresh: onRefresh,
+              child: SingleChildScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Hola, ${user.displayName} 👋',
+                      style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                            fontWeight: FontWeight.w700,
+                          ),
                     ),
-                  ),
-
-                  SizedBox(height: 6),
-
-                  Text(
-                    "Aquí están tus inmuebles:",
-                    style: TextStyle(
-                      fontSize: 16,
-                      color: Colors.grey[700],
+                    const SizedBox(height: 6),
+                    Text(
+                      'Aqui tienes una vista rapida de tus finanzas.',
+                      style: TextStyle(color: Colors.grey.shade600),
                     ),
-                  ),
-
-                  SizedBox(height: 20),
-
-                  // 🔹 LISTA DE INMUEBLES DIRECTA
-                  if (inmuebles.isEmpty)
-                    Center(
-                      child: Padding(
-                        padding: const EdgeInsets.only(top: 40),
-                        child: Text(
-                          "No tienes inmuebles registrados",
-                          style: TextStyle(fontSize: 16, color: Colors.grey),
-                        ),
-                      ),
-                    )
-                  else
-                    Column(
-                      children: inmuebles
-                          .map((i) => _buildInmuebleCard(i))
-                          .toList(),
-                    ),
-                ],
+                    const SizedBox(height: 24),
+                    _heroCard(),
+                    const SizedBox(height: 20),
+                    _statusRow(),
+                    const SizedBox(height: 24),
+                    _proximoPagoCard(),
+                    const SizedBox(height: 24),
+                    _destacadosSection(),
+                  ],
+                ),
               ),
             ),
     );
   }
 
-  // 🔹 CARD DE INMUEBLE
-  Widget _buildInmuebleCard(Inmueble i) {
+  Widget _heroCard() {
     return Container(
-      margin: EdgeInsets.only(bottom: 18),
-      padding: EdgeInsets.all(18),
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xff1d9bf0), Color(0xff1c6ae8)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(26),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.15),
+            blurRadius: 18,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Deuda total',
+            style: TextStyle(color: Colors.white70),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            _formatCurrency(_totalDeuda),
+            style: const TextStyle(
+              fontSize: 34,
+              fontWeight: FontWeight.w700,
+              color: Colors.white,
+            ),
+          ),
+          const SizedBox(height: 18),
+          Row(
+            children: [
+              Expanded(
+                child: ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.white,
+                    foregroundColor: const Color(0xff1d9bf0),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 24, vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(30),
+                    ),
+                  ),
+                  onPressed: onViewPayments,
+                  icon: const Icon(Icons.account_balance_wallet_outlined),
+                  label: const Text('Ir a pagos'),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Flexible(
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: const [
+                    Icon(Icons.autorenew, color: Colors.white),
+                    SizedBox(width: 4),
+                    Flexible(
+                      child: Text(
+                        'Actualiza para sincronizar',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 13,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _statusRow() {
+    final cards = [
+      _StatusInfo(
+        label: 'Al dia',
+        value: _countByStatus(EstadoInmueble.alDia),
+        color: const Color(0xff16a34a),
+        icon: Icons.task_alt,
+      ),
+      _StatusInfo(
+        label: 'Pendiente',
+        value: _countByStatus(EstadoInmueble.pendiente),
+        color: const Color(0xfff97316),
+        icon: Icons.access_time,
+      ),
+      _StatusInfo(
+        label: 'Moroso',
+        value: _countByStatus(EstadoInmueble.moroso),
+        color: const Color(0xffef4444),
+        icon: Icons.warning_amber_rounded,
+      ),
+    ];
+
+    return Row(
+      children: cards
+          .map(
+            (item) => Expanded(
+              child: _StatusCard(info: item),
+            ),
+          )
+          .toList(),
+    );
+  }
+
+  Widget _proximoPagoCard() {
+    final inmueble = _proximoPago;
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(22),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 14,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Proximo pago',
+            style: TextStyle(
+              fontWeight: FontWeight.w700,
+              fontSize: 16,
+            ),
+          ),
+          const SizedBox(height: 12),
+          if (inmueble == null)
+            const Text(
+              'No hay pagos programados.',
+              style: TextStyle(color: Colors.grey),
+            )
+          else
+            Row(
+              children: [
+                Container(
+                  height: 48,
+                  width: 48,
+                  decoration: BoxDecoration(
+                    color: const Color(0xffe5f2ff),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: const Icon(Icons.event_available,
+                      color: Color(0xff1d9bf0)),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        inmueble.identificacion ?? 'Inmueble',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 16,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Fecha: ${inmueble.proximaFechaPago}',
+                        style: TextStyle(color: Colors.grey.shade600),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _destacadosSection() {
+    if (_inmueblesCruciales.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Inmuebles con mayor deuda',
+          style: TextStyle(
+            fontWeight: FontWeight.w700,
+            fontSize: 16,
+          ),
+        ),
+        const SizedBox(height: 12),
+        ..._inmueblesCruciales.map(
+          (inmueble) => Container(
+            margin: const EdgeInsets.only(bottom: 14),
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(18),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.04),
+                  blurRadius: 12,
+                  offset: const Offset(0, 6),
+                ),
+              ],
+            ),
+            child: Row(
+              children: [
+                Container(
+                  height: 48,
+                  width: 48,
+                  decoration: BoxDecoration(
+                    color: const Color(0xfffef3c7),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: const Icon(Icons.home_work_outlined,
+                      color: Color(0xfff59e0b)),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        inmueble.identificacion ?? 'Inmueble',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 15,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        inmueble.tipo ?? 'Propiedad',
+                        style: TextStyle(color: Colors.grey.shade600),
+                      ),
+                    ],
+                  ),
+                ),
+                Text(
+                  _formatCurrency(
+                    double.tryParse(
+                          (inmueble.deudaActual ?? '').replaceAll(',', '.'),
+                        ) ??
+                        0,
+                  ),
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 15,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  String _formatCurrency(double value) {
+    return '\$${value.toStringAsFixed(2)}';
+  }
+}
+
+class _StatusInfo {
+  final String label;
+  final int value;
+  final Color color;
+  final IconData icon;
+
+  const _StatusInfo({
+    required this.label,
+    required this.value,
+    required this.color,
+    required this.icon,
+  });
+}
+
+class _StatusCard extends StatelessWidget {
+  final _StatusInfo info;
+
+  const _StatusCard({required this.info});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 4),
+      padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(18),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.08),
+            color: Colors.black.withOpacity(0.05),
             blurRadius: 12,
-            offset: Offset(0, 4),
-          )
+            offset: const Offset(0, 6),
+          ),
         ],
       ),
-
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                i.identificacion ?? "Inmueble",
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w700,
-                  color: Color(0xff203047),
-                ),
-              ),
-              _badgeEstado(i.estado),
-            ],
-          ),
-
-          SizedBox(height: 8),
-
+          Icon(info.icon, color: info.color),
+          const SizedBox(height: 8),
           Text(
-            _direccion(i),
-            style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+            '${info.value}',
+            style: const TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
+            ),
           ),
-
-          SizedBox(height: 16),
-
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Color(0xff203047),
-                padding: EdgeInsets.symmetric(vertical: 13),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-              onPressed: () {
-                // Pantalla de detalle (próximo módulo)
-              },
-              child: Text("Ver inmueble"),
+          const SizedBox(height: 4),
+          Text(
+            info.label,
+            style: TextStyle(
+              fontSize: 13,
+              color: Colors.grey.shade600,
             ),
           ),
         ],
       ),
     );
-  }
-
-  // 🔹 ESTADO DEL INMUEBLE (USA EL ENUM)
-  Widget _badgeEstado(EstadoInmueble estado) {
-    Color color;
-    String texto;
-
-    switch (estado) {
-      case EstadoInmueble.alDia:
-        color = Colors.green;
-        texto = "AL DÍA";
-        break;
-
-      case EstadoInmueble.pendiente:
-        color = Colors.orange;
-        texto = "PENDIENTE";
-        break;
-
-      case EstadoInmueble.moroso:
-        color = Colors.red;
-        texto = "MOROSO";
-        break;
-
-      default:
-        color = Colors.blueGrey;
-        texto = "DESCONOCIDO";
-    }
-
-    return Container(
-      padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        color: color,
-        borderRadius: BorderRadius.circular(50),
-      ),
-      child: Text(
-        texto,
-        style: TextStyle(color: Colors.white, fontSize: 12),
-      ),
-    );
-  }
-
-  // 🔹 DIRECCIÓN inteligente
-  String _direccion(Inmueble i) {
-    if (i.tipo == "apartamento") {
-      return "Torre ${i.torre}, Piso ${i.piso}";
-    }
-    return "Calle ${i.calle}, Mz ${i.manzana}, Casa ${i.identificacion}";
   }
 }

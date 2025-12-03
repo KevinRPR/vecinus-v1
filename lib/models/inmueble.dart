@@ -1,3 +1,5 @@
+import 'pago.dart';
+
 enum EstadoInmueble { alDia, pendiente, moroso, desconocido }
 
 class Inmueble {
@@ -16,6 +18,9 @@ class Inmueble {
   final String? calle;
   final String? avenida;
   final String? tipo;
+  final String? proximaFechaPago;
+  final String? deudaActual;
+  final List<Pago> pagos;
 
   Inmueble({
     required this.idInmueble,
@@ -33,7 +38,10 @@ class Inmueble {
     this.calle,
     this.avenida,
     this.tipo,
-  });
+    this.proximaFechaPago,
+    this.deudaActual,
+    List<Pago>? pagos,
+  }) : pagos = pagos ?? <Pago>[];
 
   factory Inmueble.fromJson(Map<String, dynamic> json) {
     return Inmueble(
@@ -52,7 +60,20 @@ class Inmueble {
       calle: json['calle'],
       avenida: json['avenida'],
       tipo: json['tipo'],
+      proximaFechaPago: json['proxima_fecha_pago']?.toString(),
+      deudaActual: json['deuda_actual']?.toString(),
+      pagos: _parsePagos(json['pagos']),
     );
+  }
+
+  static List<Pago> _parsePagos(dynamic rawPagos) {
+    if (rawPagos is List) {
+      return rawPagos
+          .whereType<Map<String, dynamic>>()
+          .map(Pago.fromJson)
+          .toList();
+    }
+    return <Pago>[];
   }
 
   static EstadoInmueble _parseEstado(dynamic raw) {

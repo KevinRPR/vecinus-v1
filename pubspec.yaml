@@ -1,6 +1,6 @@
 name: gestion_condominios
-description: Aplicación móvil Flutter para gestión de condominios
-publish_to: 'none' # No publicar a pub.dev
+description: Aplicacion movil Flutter para gestion de condominios
+publish_to: 'none'
 version: 1.0.0+1
 
 environment:
@@ -10,37 +10,21 @@ dependencies:
   flutter:
     sdk: flutter
 
-  # 📡 HTTP requests
   http: ^1.2.0
-
-  # 💾 Guardar token y datos del usuario localmente
   shared_preferences: ^2.3.2
-
-  # 🧭 Navegación y utilidades opcionales
+  image_picker: ^1.1.0
   flutter_hooks: ^0.20.5
   provider: ^6.1.2
-
-  # 🎨 Íconos y estilos
   cupertino_icons: ^1.0.8
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
-
   flutter_lints: ^4.0.0
 
 flutter:
   uses-material-design: true
 
-  # Puedes agregar fuentes o assets aquí más adelante
   assets:
     - assets/images/
     - assets/icons/
-
-  # Ejemplo de fuentes personalizadas (opcional)
-  # fonts:
-  #   - family: Poppins
-  #     fonts:
-  #       - asset: assets/fonts/Poppins-Regular.ttf
-  #       - asset: assets/fonts/Poppins-Bold.ttf
-  #         weight: 700

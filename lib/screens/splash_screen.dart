@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
+import '../models/user.dart';
 import '../services/auth_service.dart';
+import 'main_shell.dart';
 import 'login_screen.dart';
-import 'user_screen.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -18,33 +19,33 @@ class _SplashScreenState extends State<SplashScreen> {
   }
 
   Future<void> _checkSession() async {
-    await Future.delayed(const Duration(seconds: 2)); // animación / branding
+    await Future.delayed(const Duration(milliseconds: 800));
 
-    final logged = await AuthService.isLoggedIn();
+    final token = await AuthService.getToken();
+    final userMap = await AuthService.getUser();
 
     if (!mounted) return;
 
-    if (logged) {
-      final user = await AuthService.getUser();
-      final token = await AuthService.getToken();
+    if (token != null && userMap != null) {
+      final user = User.fromJson(userMap);
 
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(
-          builder: (_) => UserScreen(
-            userData: {
-              "usuario": user,
-              "token": token,
-            },
+      if (user.hasValidSession) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (_) => MainShell(user: user, token: token),
           ),
-        ),
-      );
-    } else {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => const LoginScreen()),
-      );
+        );
+        return;
+      } else {
+        await AuthService.logout();
+      }
     }
+
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (_) => const LoginScreen()),
+    );
   }
 
   @override
