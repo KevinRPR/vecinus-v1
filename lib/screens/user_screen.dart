@@ -2,10 +2,12 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:provider/provider.dart';
 
 import '../models/user.dart';
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
+import '../theme/theme_controller.dart';
 
 class UserScreen extends StatefulWidget {
   final User user;
@@ -238,6 +240,7 @@ class _UserScreenState extends State<UserScreen> {
                   _profileHeader(context),
                   const SizedBox(height: 24),
                   _sectionCard(
+                    context,
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -277,6 +280,7 @@ class _UserScreenState extends State<UserScreen> {
                   ),
                   const SizedBox(height: 12),
                   _sectionCard(
+                    context,
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -318,6 +322,16 @@ class _UserScreenState extends State<UserScreen> {
                       ],
                     ),
                   ),
+                  const SizedBox(height: 24),
+                  Text(
+                    'Ajustes',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  const SizedBox(height: 12),
+                  _sectionCard(
+                    context,
+                    child: _buildSettingsSection(context),
+                  ),
                 ],
               ),
             ),
@@ -340,13 +354,19 @@ class _UserScreenState extends State<UserScreen> {
 
   Widget _profileHeader(BuildContext context) {
     final avatarUrl = _user?.avatarUrl;
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final gradientColors = isDark
+        ? const [Color(0xff1f2937), Color(0xff0f172a)]
+        : const [Color(0xfff9fafb), Color(0xffeef2ff)];
+    final circleBg = isDark ? const Color(0xff243447) : const Color(0xffe2e8f0);
 
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 20),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [Color(0xfff9fafb), Color(0xffeef2ff)],
+        gradient: LinearGradient(
+          colors: gradientColors,
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
@@ -358,7 +378,7 @@ class _UserScreenState extends State<UserScreen> {
             children: [
               CircleAvatar(
                 radius: 55,
-                backgroundColor: const Color(0xffe2e8f0),
+                backgroundColor: circleBg,
                 backgroundImage:
                     avatarUrl != null ? NetworkImage(avatarUrl) : null,
                 child: avatarUrl == null
@@ -410,12 +430,12 @@ class _UserScreenState extends State<UserScreen> {
     );
   }
 
-  Widget _sectionCard({required Widget child}) {
+  Widget _sectionCard(BuildContext context, {required Widget child}) {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Theme.of(context).cardColor,
         borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
@@ -426,6 +446,61 @@ class _UserScreenState extends State<UserScreen> {
         ],
       ),
       child: child,
+    );
+  }
+
+  Widget _buildSettingsSection(BuildContext context) {
+    return Consumer<ThemeController>(
+      builder: (context, controller, _) {
+        final platformDark =
+            MediaQuery.of(context).platformBrightness == Brightness.dark;
+        final mode = controller.themeMode;
+        final isDark = mode == ThemeMode.dark ||
+            (mode == ThemeMode.system && platformDark);
+        final followsSystem = mode == ThemeMode.system;
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SwitchListTile.adaptive(
+              value: isDark,
+              onChanged: (value) {
+                final nextMode = value ? ThemeMode.dark : ThemeMode.light;
+                controller.setThemeMode(nextMode);
+              },
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Modo oscuro'),
+              subtitle: Text(
+                followsSystem
+                    ? 'Siguiendo el tema del sistema.'
+                    : (isDark
+                        ? 'Modo oscuro activado.'
+                        : 'Modo claro activado.'),
+              ),
+            ),
+            if (!followsSystem)
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton(
+                  onPressed: () => controller.resetToSystem(),
+                  child: const Text('Usar modo del sistema'),
+                ),
+              )
+            else
+              Text(
+                'Por defecto adoptamos el modo que tenga tu dispositivo.',
+                style: TextStyle(
+                  fontSize: 13,
+                  color: Theme.of(context)
+                      .textTheme
+                      .bodySmall
+                      ?.color
+                      ?.withOpacity(0.8),
+                ),
+              ),
+          ],
+        );
+      },
     );
   }
 
@@ -445,13 +520,16 @@ class _UserScreenState extends State<UserScreen> {
     TextInputType type, {
     bool obscure = false,
   }) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final fill = isDark ? const Color(0xff1f2b3a) : const Color(0xffeef2ff);
     return TextField(
       controller: controller,
       keyboardType: type,
       obscureText: obscure,
       decoration: InputDecoration(
         filled: true,
-        fillColor: const Color(0xfff5f6fa),
+        fillColor: fill,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
           borderSide: BorderSide.none,

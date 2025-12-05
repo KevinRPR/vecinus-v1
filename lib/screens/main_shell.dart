@@ -1,3 +1,5 @@
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 
 import '../models/inmueble.dart';
@@ -94,19 +96,34 @@ class _MainShellState extends State<MainShell> {
       ),
     ];
 
+    final theme = Theme.of(context);
+    final primary = theme.colorScheme.primary;
+    final textColor = theme.textTheme.bodyMedium?.color ?? Colors.black;
+    final bottomInset = MediaQuery.of(context).padding.bottom;
+
     return Scaffold(
-      backgroundColor: const Color(0xfff7f4fb),
+      backgroundColor: theme.scaffoldBackgroundColor,
       body: PageView(
         controller: _pageController,
         physics: const BouncingScrollPhysics(),
         onPageChanged: (index) => setState(() => _currentIndex = index),
         children: pages,
       ),
-      bottomNavigationBar: _buildBottomNavigation(),
+      bottomNavigationBar: _buildBottomNavigation(
+        theme: theme,
+        primary: primary,
+        textColor: textColor,
+        bottomInset: bottomInset,
+      ),
     );
   }
 
-  Widget _buildBottomNavigation() {
+  Widget _buildBottomNavigation({
+    required ThemeData theme,
+    required Color primary,
+    required Color textColor,
+    required double bottomInset,
+  }) {
     final items = [
       _NavItem(icon: Icons.home_rounded, label: 'Inicio'),
       _NavItem(icon: Icons.account_balance_wallet_outlined, label: 'Pagos'),
@@ -114,83 +131,110 @@ class _MainShellState extends State<MainShell> {
       _NavItem(icon: Icons.person_outline, label: 'Perfil'),
     ];
 
-    return SafeArea(
-      minimum: const EdgeInsets.only(bottom: 12, left: 16, right: 16, top: 4),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(30),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.05),
-              blurRadius: 20,
-              offset: const Offset(0, 10),
-            ),
-          ],
-        ),
-        child: Row(
-          children: List.generate(items.length, (index) {
-            final selected = _currentIndex == index;
-            final item = items[index];
-            final bool centralHighlight = index == 2;
+    final isDark = theme.brightness == Brightness.dark;
+    final Color glassColor =
+        isDark ? Colors.white.withOpacity(0.05) : Colors.white.withOpacity(0.85);
+    final Color borderColor = Colors.white.withOpacity(isDark ? 0.08 : 0.3);
+    final double extraBottom = bottomInset > 0 ? bottomInset : 12;
 
-            return Expanded(
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () => _onTabSelected(index),
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 220),
-                  curve: Curves.easeOut,
-                  padding: const EdgeInsets.symmetric(vertical: 6),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      AnimatedContainer(
-                        duration: const Duration(milliseconds: 220),
-                        padding: centralHighlight && selected
-                            ? const EdgeInsets.all(9)
-                            : const EdgeInsets.all(7),
-                        decoration: selected
-                            ? BoxDecoration(
-                                color: centralHighlight
-                                    ? const Color(0xff1d9bf0)
-                                    : const Color(0xffe8efff),
-                                shape: centralHighlight
-                                    ? BoxShape.circle
-                                    : BoxShape.rectangle,
-                                borderRadius: centralHighlight
-                                    ? null
-                                    : BorderRadius.circular(18),
-                              )
-                            : null,
-                        child: Icon(
-                          item.icon,
-                          color: selected
-                              ? (centralHighlight
-                                  ? Colors.white
-                                  : const Color(0xff1d9bf0))
-                              : Colors.grey.shade500,
-                        ),
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(16, 0, 16, extraBottom),
+        child: SizedBox(
+          height: 86,
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              Positioned.fill(
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(34),
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(34),
+                        color: glassColor,
+                        border: Border.all(color: borderColor, width: 1),
+                        boxShadow: [
+                          BoxShadow(
+                            color:
+                                Colors.black.withOpacity(isDark ? 0.45 : 0.18),
+                            blurRadius: 30,
+                            offset: const Offset(0, 14),
+                          ),
+                        ],
                       ),
-                      const SizedBox(height: 4),
-                      Text(
-                        item.label,
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: selected
-                              ? const Color(0xff1f2933)
-                              : Colors.grey.shade500,
-                          fontWeight:
-                              selected ? FontWeight.w600 : FontWeight.w500,
-                        ),
-                      ),
-                    ],
+                    ),
                   ),
                 ),
               ),
-            );
-          }),
+              Row(
+                children: List.generate(items.length, (index) {
+                  final selected = _currentIndex == index;
+                  final item = items[index];
+                  final bool centralHighlight = index == 2;
+
+                  final Color selectedColor =
+                      centralHighlight ? Colors.white : primary;
+                  final Color unselectedColor = textColor.withOpacity(0.5);
+
+                  return Expanded(
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () => _onTabSelected(index),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 220),
+                        curve: Curves.easeOut,
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            AnimatedContainer(
+                              duration: const Duration(milliseconds: 220),
+                              padding: const EdgeInsets.all(9),
+                              decoration: selected
+                                  ? BoxDecoration(
+                                      color: centralHighlight
+                                          ? primary
+                                          : primary.withOpacity(
+                                              isDark ? 0.22 : 0.18),
+                                      shape: centralHighlight
+                                          ? BoxShape.circle
+                                          : BoxShape.rectangle,
+                                      borderRadius: centralHighlight
+                                          ? null
+                                          : BorderRadius.circular(18),
+                                    )
+                                  : null,
+                              child: Icon(
+                                item.icon,
+                                color:
+                                    selected ? selectedColor : unselectedColor,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              item.label,
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: selected
+                                    ? textColor.withOpacity(0.9)
+                                    : unselectedColor,
+                                fontWeight: selected
+                                    ? FontWeight.w600
+                                    : FontWeight.w500,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  );
+                }),
+              ),
+            ],
+          ),
         ),
       ),
     );

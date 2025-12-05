@@ -76,16 +76,22 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       NotificationType.info => Icons.notifications_active_outlined,
     };
 
+    final theme = Theme.of(context);
+    final cardColor = theme.cardColor;
+    final isDark = theme.brightness == Brightness.dark;
+    final baseText = theme.textTheme.bodyMedium?.color ?? Colors.black87;
+
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: cardColor,
         borderRadius: BorderRadius.circular(18),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.04),
-            blurRadius: 12,
-            offset: const Offset(0, 6),
+            color: (theme.shadowColor ?? Colors.black.withOpacity(0.1))
+                .withOpacity(isDark ? 0.35 : 0.12),
+            blurRadius: 18,
+            offset: const Offset(0, 10),
           ),
         ],
       ),
@@ -95,7 +101,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
             height: 44,
             width: 44,
             decoration: BoxDecoration(
-              color: color.withOpacity(0.12),
+              color: color.withOpacity(isDark ? 0.22 : 0.12),
               borderRadius: BorderRadius.circular(14),
             ),
             child: Icon(icon, color: color),
@@ -107,20 +113,26 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
               children: [
                 Text(
                   item.title,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontWeight: FontWeight.w600,
                     fontSize: 15,
+                    color: baseText,
                   ),
                 ),
                 const SizedBox(height: 4),
                 Text(
                   item.subtitle,
-                  style: TextStyle(color: Colors.grey.shade600),
+                  style: TextStyle(
+                    color: baseText.withOpacity(0.75),
+                  ),
                 ),
                 const SizedBox(height: 6),
                 Text(
                   _formatTimeAgo(item.timestamp),
-                  style: TextStyle(color: Colors.grey.shade500, fontSize: 12),
+                  style: TextStyle(
+                    color: baseText.withOpacity(0.6),
+                    fontSize: 12,
+                  ),
                 ),
               ],
             ),

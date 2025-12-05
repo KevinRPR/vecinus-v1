@@ -68,6 +68,10 @@ class _LoginScreenState extends State<LoginScreen> {
     bool obscure = false,
     TextInputType type = TextInputType.text,
   }) {
+    final theme = Theme.of(context);
+    final bool isDark = theme.brightness == Brightness.dark;
+    final fieldColor =
+        isDark ? const Color(0xff1f2b3a) : const Color(0xffeef2ff);
     return TextField(
       controller: controller,
       keyboardType: type,
@@ -75,7 +79,7 @@ class _LoginScreenState extends State<LoginScreen> {
       decoration: InputDecoration(
         labelText: label,
         filled: true,
-        fillColor: const Color(0xfff5f6fa),
+        fillColor: fieldColor,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
           borderSide: BorderSide.none,
@@ -88,10 +92,11 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return GestureDetector(
       onTap: () => FocusScope.of(context).unfocus(),
       child: Scaffold(
-        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+        backgroundColor: theme.scaffoldBackgroundColor,
         body: SafeArea(
           child: SingleChildScrollView(
             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
@@ -101,7 +106,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 const SizedBox(height: 20),
                 Text(
                   'Bienvenido a Vecinus',
-                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                  style: theme.textTheme.headlineSmall?.copyWith(
                         fontWeight: FontWeight.w700,
                       ),
                 ),
@@ -116,11 +121,14 @@ class _LoginScreenState extends State<LoginScreen> {
                   padding:
                       const EdgeInsets.symmetric(horizontal: 24, vertical: 30),
                   decoration: BoxDecoration(
-                    color: Colors.white,
+                    color: theme.cardColor,
                     borderRadius: BorderRadius.circular(26),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.05),
+                        color: theme.shadowColor?.withOpacity(
+                              theme.brightness == Brightness.dark ? 0.4 : 0.12,
+                            ) ??
+                            Colors.black.withOpacity(0.12),
                         blurRadius: 18,
                         offset: const Offset(0, 10),
                       ),
@@ -145,8 +153,8 @@ class _LoginScreenState extends State<LoginScreen> {
                         alignment: Alignment.centerRight,
                         child: Text(
                           '¿Olvidaste tu contraseña?',
-                          style: TextStyle(
-                            color: const Color(0xff1d9bf0),
+                  style: TextStyle(
+                            color: theme.colorScheme.primary,
                             fontSize: 13,
                             fontWeight: FontWeight.w500,
                           ),
@@ -194,8 +202,8 @@ class _LoginScreenState extends State<LoginScreen> {
                     const SizedBox(width: 6),
                     Text(
                       'Contacta al administrador',
-                      style: const TextStyle(
-                        color: Color(0xff1d9bf0),
+                      style: TextStyle(
+                        color: theme.colorScheme.primary,
                         fontWeight: FontWeight.w600,
                       ),
                     ),

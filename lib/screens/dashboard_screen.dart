@@ -63,8 +63,12 @@ class DashboardScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cardColor = theme.cardColor;
+    final shadowColor = theme.shadowColor ?? Colors.black.withOpacity(0.1);
+
     return Scaffold(
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(
         title: const Text('Resumen'),
         centerTitle: true,
@@ -92,13 +96,13 @@ class DashboardScreen extends StatelessWidget {
                       style: TextStyle(color: Colors.grey.shade600),
                     ),
                     const SizedBox(height: 24),
-                    _heroCard(),
+                    _heroCard(theme),
                     const SizedBox(height: 20),
-                    _statusRow(),
+                    _statusRow(theme),
                     const SizedBox(height: 24),
-                    _proximoPagoCard(),
+                    _proximoPagoCard(cardColor, shadowColor),
                     const SizedBox(height: 24),
-                    _destacadosSection(),
+                    _destacadosSection(cardColor, shadowColor),
                   ],
                 ),
               ),
@@ -106,19 +110,22 @@ class DashboardScreen extends StatelessWidget {
     );
   }
 
-  Widget _heroCard() {
+  Widget _heroCard(ThemeData theme) {
+    final isDark = theme.brightness == Brightness.dark;
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [Color(0xff1d9bf0), Color(0xff1c6ae8)],
+        gradient: LinearGradient(
+          colors: isDark
+              ? const [Color(0xff1d9bf0), Color(0xff123b7a)]
+              : const [Color(0xff1d9bf0), Color(0xff1c6ae8)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(26),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.15),
+            color: Colors.black.withOpacity(isDark ? 0.25 : 0.15),
             blurRadius: 18,
             offset: const Offset(0, 10),
           ),
@@ -186,7 +193,7 @@ class DashboardScreen extends StatelessWidget {
     );
   }
 
-  Widget _statusRow() {
+  Widget _statusRow(ThemeData theme) {
     final cards = [
       _StatusInfo(
         label: 'Al dia',
@@ -212,23 +219,23 @@ class DashboardScreen extends StatelessWidget {
       children: cards
           .map(
             (item) => Expanded(
-              child: _StatusCard(info: item),
+              child: _StatusCard(info: item, theme: theme),
             ),
           )
           .toList(),
     );
   }
 
-  Widget _proximoPagoCard() {
+  Widget _proximoPagoCard(Color cardColor, Color shadowColor) {
     final inmueble = _proximoPago;
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: cardColor,
         borderRadius: BorderRadius.circular(22),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
+            color: shadowColor.withOpacity(0.2),
             blurRadius: 14,
             offset: const Offset(0, 8),
           ),
@@ -290,7 +297,7 @@ class DashboardScreen extends StatelessWidget {
     );
   }
 
-  Widget _destacadosSection() {
+  Widget _destacadosSection(Color cardColor, Color shadowColor) {
     if (_inmueblesCruciales.isEmpty) {
       return const SizedBox.shrink();
     }
@@ -310,11 +317,11 @@ class DashboardScreen extends StatelessWidget {
             margin: const EdgeInsets.only(bottom: 14),
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: cardColor,
               borderRadius: BorderRadius.circular(18),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.04),
+                  color: shadowColor.withOpacity(0.18),
                   blurRadius: 12,
                   offset: const Offset(0, 6),
                 ),
@@ -393,22 +400,26 @@ class _StatusInfo {
 
 class _StatusCard extends StatelessWidget {
   final _StatusInfo info;
+  final ThemeData theme;
 
-  const _StatusCard({required this.info});
+  const _StatusCard({required this.info, required this.theme});
 
   @override
   Widget build(BuildContext context) {
+    final isDark = theme.brightness == Brightness.dark;
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 4),
       padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: theme.cardColor,
         borderRadius: BorderRadius.circular(18),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 12,
-            offset: const Offset(0, 6),
+            color:
+                (theme.shadowColor ?? Colors.black.withOpacity(0.1))
+                    .withOpacity(isDark ? 0.3 : 0.15),
+            blurRadius: 16,
+            offset: const Offset(0, 8),
           ),
         ],
       ),
