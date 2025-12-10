@@ -2,12 +2,12 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:provider/provider.dart';
 
 import '../models/user.dart';
+import '../animations/transitions.dart';
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
-import '../theme/theme_controller.dart';
+import '../theme_controller.dart';
 
 class UserScreen extends StatefulWidget {
   final User user;
@@ -43,6 +43,7 @@ class _UserScreenState extends State<UserScreen> {
   bool _savingProfile = false;
   bool _changingPassword = false;
   bool _uploadingAvatar = false;
+  bool _syncing = false;
 
   @override
   void initState() {
@@ -51,7 +52,7 @@ class _UserScreenState extends State<UserScreen> {
     _apellidoController = TextEditingController(text: widget.user.apellido);
     _correoController = TextEditingController(text: widget.user.correo);
     _user = widget.user;
-    _loadProfile();
+    _loading = false; // usamos datos locales almacenados, sin esperar llamada remota
   }
 
   @override
@@ -65,8 +66,8 @@ class _UserScreenState extends State<UserScreen> {
     super.dispose();
   }
 
-  Future<void> _loadProfile() async {
-    setState(() => _loading = true);
+  Future<void> _syncProfile() async {
+    setState(() => _syncing = true);
     try {
       final remoteUser = await ApiService.fetchProfile(widget.token);
       final sessionAware = remoteUser.copyWith(
@@ -77,12 +78,13 @@ class _UserScreenState extends State<UserScreen> {
         _nombreController.text = sessionAware.nombre;
         _apellidoController.text = sessionAware.apellido;
         _correoController.text = sessionAware.correo;
-        _loading = false;
       });
       widget.onUserUpdated?.call(sessionAware);
+      await AuthService.saveSession(widget.token, sessionAware.toJson());
     } catch (e) {
       _showSnack('No se pudo sincronizar el perfil: $e');
-      setState(() => _loading = false);
+    } finally {
+      setState(() => _syncing = false);
     }
   }
 
@@ -232,107 +234,127 @@ class _UserScreenState extends State<UserScreen> {
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
-          : SingleChildScrollView(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _profileHeader(context),
-                  const SizedBox(height: 24),
-                  _sectionCard(
-                    context,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _buildInputLabel('Nombre'),
-                        _buildTextField(_nombreController, TextInputType.name),
-                        const SizedBox(height: 16),
-                        _buildInputLabel('Apellido'),
-                        _buildTextField(_apellidoController, TextInputType.name),
-                        const SizedBox(height: 16),
-                        _buildInputLabel('Correo'),
-                        _buildTextField(
-                          _correoController,
-                          TextInputType.emailAddress,
-                        ),
-                        const SizedBox(height: 24),
-                        SizedBox(
-                          width: double.infinity,
-                          child: ElevatedButton(
-                            onPressed: _savingProfile ? null : _saveProfile,
-                            child: _savingProfile
-                                ? const SizedBox(
-                                    height: 20,
-                                    width: 20,
-                                    child:
-                                        CircularProgressIndicator(strokeWidth: 2),
-                                  )
-                                : const Text('Guardar cambios'),
-                          ),
-                        ),
-                      ],
+          : RefreshIndicator(
+              onRefresh: _syncProfile,
+              child: SingleChildScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    FadeSlideTransition(
+                      beginOffset: const Offset(0, 0.02),
+                      child: _profileHeader(context),
                     ),
-                  ),
-                  const SizedBox(height: 24),
-                  Text(
-                    'Seguridad',
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                  const SizedBox(height: 12),
+                    const SizedBox(height: 16),
+                    _preferencesSection(context),
+                    const SizedBox(height: 24),
+                    _sectionCard(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _buildInputLabel('Nombre'),
+                          _buildTextField(_nombreController, TextInputType.name),
+                          const SizedBox(height: 16),
+                          _buildInputLabel('Apellido'),
+                          _buildTextField(_apellidoController, TextInputType.name),
+                          const SizedBox(height: 16),
+                          _buildInputLabel('Correo'),
+                          _buildTextField(
+                            _correoController,
+                            TextInputType.emailAddress,
+                          ),
+                          const SizedBox(height: 24),
+                          SizedBox(
+                            width: double.infinity,
+                            child: ElevatedButton(
+                              onPressed: _savingProfile ? null : _saveProfile,
+                              child: _savingProfile
+                                  ? const SizedBox(
+                                      height: 20,
+                                      width: 20,
+                                      child:
+                                          CircularProgressIndicator(strokeWidth: 2),
+                                    )
+                                  : const Text('Guardar cambios'),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    Text(
+                      'Seguridad',
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    const SizedBox(height: 12),
                   _sectionCard(
-                    context,
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         _buildInputLabel('Contrasena actual'),
-                        _buildTextField(
-                          _passwordActualController,
-                          TextInputType.visiblePassword,
-                          obscure: true,
-                        ),
-                        const SizedBox(height: 16),
-                        _buildInputLabel('Nueva contrasena'),
-                        _buildTextField(
-                          _passwordNuevaController,
-                          TextInputType.visiblePassword,
-                          obscure: true,
-                        ),
-                        const SizedBox(height: 16),
-                        _buildInputLabel('Confirmar contrasena'),
-                        _buildTextField(
-                          _passwordConfirmController,
-                          TextInputType.visiblePassword,
-                          obscure: true,
-                        ),
-                        const SizedBox(height: 24),
+                          _buildTextField(
+                            _passwordActualController,
+                            TextInputType.visiblePassword,
+                            obscure: true,
+                          ),
+                          const SizedBox(height: 16),
+                          _buildInputLabel('Nueva contrasena'),
+                          _buildTextField(
+                            _passwordNuevaController,
+                            TextInputType.visiblePassword,
+                            obscure: true,
+                          ),
+                          const SizedBox(height: 16),
+                          _buildInputLabel('Confirmar contrasena'),
+                          _buildTextField(
+                            _passwordConfirmController,
+                            TextInputType.visiblePassword,
+                            obscure: true,
+                          ),
+                          const SizedBox(height: 24),
                         SizedBox(
                           width: double.infinity,
                           child: OutlinedButton(
                             onPressed: _changingPassword ? null : _changePassword,
                             child: _changingPassword
-                                ? const SizedBox(
-                                    height: 20,
-                                    width: 20,
-                                    child:
-                                        CircularProgressIndicator(strokeWidth: 2),
-                                  )
+                                  ? const SizedBox(
+                                      height: 20,
+                                      width: 20,
+                              child:
+                                  CircularProgressIndicator(strokeWidth: 2),
+                            )
                                 : const Text('Actualizar contrasena'),
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        SizedBox(
+                          width: double.infinity,
+                          child: OutlinedButton.icon(
+                            icon: const Icon(Icons.logout),
+                            label: const Text('Cerrar sesion'),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor:
+                                  Theme.of(context).colorScheme.error,
+                              side: BorderSide(
+                                color: Theme.of(context).colorScheme.error,
+                              ),
+                            ),
+                            onPressed: () async {
+                              await AuthService.logout();
+                              if (!mounted) return;
+                              Navigator.of(context).pushAndRemoveUntil(
+                                fadeSlideRoute(const LoginScreen()),
+                                (route) => false,
+                              );
+                            },
                           ),
                         ),
                       ],
                     ),
                   ),
-                  const SizedBox(height: 24),
-                  Text(
-                    'Ajustes',
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                  const SizedBox(height: 12),
-                  _sectionCard(
-                    context,
-                    child: _buildSettingsSection(context),
-                  ),
                 ],
+              ),
               ),
             ),
     );
@@ -354,19 +376,16 @@ class _UserScreenState extends State<UserScreen> {
 
   Widget _profileHeader(BuildContext context) {
     final avatarUrl = _user?.avatarUrl;
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-    final gradientColors = isDark
-        ? const [Color(0xff1f2937), Color(0xff0f172a)]
-        : const [Color(0xfff9fafb), Color(0xffeef2ff)];
-    final circleBg = isDark ? const Color(0xff243447) : const Color(0xffe2e8f0);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 20),
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: gradientColors,
+          colors: isDark
+              ? const [Color(0xff161921), Color(0xff1f2330)]
+              : const [Color(0xfff9fafb), Color(0xffeef2ff)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
@@ -378,7 +397,7 @@ class _UserScreenState extends State<UserScreen> {
             children: [
               CircleAvatar(
                 radius: 55,
-                backgroundColor: circleBg,
+                backgroundColor: const Color(0xffe2e8f0),
                 backgroundImage:
                     avatarUrl != null ? NetworkImage(avatarUrl) : null,
                 child: avatarUrl == null
@@ -415,22 +434,48 @@ class _UserScreenState extends State<UserScreen> {
           const SizedBox(height: 12),
           Text(
             (_user ?? widget.user).displayName,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 20,
               fontWeight: FontWeight.w700,
+              color: isDark ? Colors.white : Colors.black,
             ),
           ),
           const SizedBox(height: 4),
           Text(
             _user?.correo ?? widget.user.correo,
-            style: TextStyle(color: Colors.grey.shade600),
+            style: TextStyle(
+              color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
+            ),
           ),
         ],
       ),
     );
   }
 
-  Widget _sectionCard(BuildContext context, {required Widget child}) {
+  Widget _preferencesSection(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    return _sectionCard(
+      child: ValueListenableBuilder<ThemeMode>(
+        valueListenable: themeController.themeMode,
+        builder: (context, mode, _) {
+          final isDark = mode == ThemeMode.dark;
+          return SwitchListTile.adaptive(
+            contentPadding: EdgeInsets.zero,
+            title: Text(
+              'Modo oscuro',
+              style: textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
+            ),
+            subtitle: const Text('Usa tonos carbón modernos para baja luz.'),
+            value: isDark,
+            onChanged: (value) => themeController.toggleDark(value),
+            activeColor: Theme.of(context).colorScheme.primary,
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _sectionCard({required Widget child}) {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(20),
@@ -439,68 +484,14 @@ class _UserScreenState extends State<UserScreen> {
         borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.04),
+            color: Colors.black.withOpacity(
+                Theme.of(context).brightness == Brightness.dark ? 0.35 : 0.04),
             blurRadius: 12,
             offset: const Offset(0, 6),
           ),
         ],
       ),
       child: child,
-    );
-  }
-
-  Widget _buildSettingsSection(BuildContext context) {
-    return Consumer<ThemeController>(
-      builder: (context, controller, _) {
-        final platformDark =
-            MediaQuery.of(context).platformBrightness == Brightness.dark;
-        final mode = controller.themeMode;
-        final isDark = mode == ThemeMode.dark ||
-            (mode == ThemeMode.system && platformDark);
-        final followsSystem = mode == ThemeMode.system;
-
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            SwitchListTile.adaptive(
-              value: isDark,
-              onChanged: (value) {
-                final nextMode = value ? ThemeMode.dark : ThemeMode.light;
-                controller.setThemeMode(nextMode);
-              },
-              contentPadding: EdgeInsets.zero,
-              title: const Text('Modo oscuro'),
-              subtitle: Text(
-                followsSystem
-                    ? 'Siguiendo el tema del sistema.'
-                    : (isDark
-                        ? 'Modo oscuro activado.'
-                        : 'Modo claro activado.'),
-              ),
-            ),
-            if (!followsSystem)
-              Align(
-                alignment: Alignment.centerRight,
-                child: TextButton(
-                  onPressed: () => controller.resetToSystem(),
-                  child: const Text('Usar modo del sistema'),
-                ),
-              )
-            else
-              Text(
-                'Por defecto adoptamos el modo que tenga tu dispositivo.',
-                style: TextStyle(
-                  fontSize: 13,
-                  color: Theme.of(context)
-                      .textTheme
-                      .bodySmall
-                      ?.color
-                      ?.withOpacity(0.8),
-                ),
-              ),
-          ],
-        );
-      },
     );
   }
 
@@ -522,20 +513,42 @@ class _UserScreenState extends State<UserScreen> {
   }) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
-    final fill = isDark ? const Color(0xff1f2b3a) : const Color(0xffeef2ff);
     return TextField(
       controller: controller,
       keyboardType: type,
       obscureText: obscure,
+      style: TextStyle(color: theme.colorScheme.onSurface),
+      cursorColor: theme.colorScheme.primary,
       decoration: InputDecoration(
         filled: true,
-        fillColor: fill,
+        fillColor: isDark ? const Color(0xff1f222c) : const Color(0xfff5f6fa),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
-          borderSide: BorderSide.none,
+          borderSide: BorderSide(
+            color: isDark
+                ? Colors.white.withOpacity(0.08)
+                : Colors.black.withOpacity(0.05),
+          ),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide(
+            color: isDark
+                ? Colors.white.withOpacity(0.08)
+                : Colors.black.withOpacity(0.05),
+          ),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide(
+            color: theme.colorScheme.primary,
+            width: 1.4,
+          ),
         ),
         contentPadding:
             const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        hintStyle: TextStyle(color: isDark ? Colors.grey.shade500 : Colors.grey.shade600),
+        labelStyle: TextStyle(color: isDark ? Colors.grey.shade400 : Colors.grey.shade700),
       ),
     );
   }

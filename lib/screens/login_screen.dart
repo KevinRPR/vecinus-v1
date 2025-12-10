@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../animations/transitions.dart';
 import '../models/user.dart';
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
@@ -42,9 +43,7 @@ class _LoginScreenState extends State<LoginScreen> {
       if (mounted) {
         Navigator.pushReplacement(
           context,
-          MaterialPageRoute(
-            builder: (_) => MainShell(user: sessionUser, token: token),
-          ),
+          fadeSlideRoute(MainShell(user: sessionUser, token: token)),
         );
       }
     } catch (e) {
@@ -68,10 +67,7 @@ class _LoginScreenState extends State<LoginScreen> {
     bool obscure = false,
     TextInputType type = TextInputType.text,
   }) {
-    final theme = Theme.of(context);
-    final bool isDark = theme.brightness == Brightness.dark;
-    final fieldColor =
-        isDark ? const Color(0xff1f2b3a) : const Color(0xffeef2ff);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return TextField(
       controller: controller,
       keyboardType: type,
@@ -79,7 +75,7 @@ class _LoginScreenState extends State<LoginScreen> {
       decoration: InputDecoration(
         labelText: label,
         filled: true,
-        fillColor: fieldColor,
+        fillColor: isDark ? const Color(0xff1f222c) : const Color(0xfff5f6fa),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
           borderSide: BorderSide.none,
@@ -92,126 +88,143 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return GestureDetector(
       onTap: () => FocusScope.of(context).unfocus(),
       child: Scaffold(
-        backgroundColor: theme.scaffoldBackgroundColor,
-        body: SafeArea(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const SizedBox(height: 20),
-                Text(
-                  'Bienvenido a Vecinus',
-                  style: theme.textTheme.headlineSmall?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+        body: LayoutBuilder(
+          builder: (context, constraints) {
+            final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+            return SafeArea(
+              child: SingleChildScrollView(
+                padding: EdgeInsets.fromLTRB(
+                  24,
+                  32,
+                  24,
+                  32 + bottomInset,
                 ),
-                const SizedBox(height: 6),
-                Text(
-                  'Ingresa con tu correo y contraseña para continuar.',
-                  style: TextStyle(color: Colors.grey.shade600),
-                ),
-                const SizedBox(height: 32),
-                Container(
-                  width: double.infinity,
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 24, vertical: 30),
-                  decoration: BoxDecoration(
-                    color: theme.cardColor,
-                    borderRadius: BorderRadius.circular(26),
-                    boxShadow: [
-                      BoxShadow(
-                        color: theme.shadowColor?.withOpacity(
-                              theme.brightness == Brightness.dark ? 0.4 : 0.12,
-                            ) ??
-                            Colors.black.withOpacity(0.12),
-                        blurRadius: 18,
-                        offset: const Offset(0, 10),
-                      ),
-                    ],
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    minHeight: constraints.maxHeight - bottomInset,
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _buildTextField(
-                        controller: emailController,
-                        label: 'Correo electrónico',
-                        type: TextInputType.emailAddress,
+                      const SizedBox(height: 20),
+                      Text(
+                        'Bienvenido a Vecinus',
+                        style:
+                            Theme.of(context).textTheme.headlineSmall?.copyWith(
+                                  fontWeight: FontWeight.w700,
+                                ),
                       ),
-                      const SizedBox(height: 16),
-                      _buildTextField(
-                        controller: passwordController,
-                        label: 'Contraseña',
-                        obscure: true,
+                      const SizedBox(height: 6),
+                      Text(
+                        'Ingresa con tu correo y contrasena para continuar.',
+                        style: TextStyle(color: Colors.grey.shade600),
                       ),
-                      const SizedBox(height: 12),
-                      Align(
-                        alignment: Alignment.centerRight,
-                        child: Text(
-                          '¿Olvidaste tu contraseña?',
-                  style: TextStyle(
-                            color: theme.colorScheme.primary,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w500,
+                      const SizedBox(height: 32),
+                      FadeSlideTransition(
+                        child: Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 24, vertical: 30),
+                          decoration: BoxDecoration(
+                            color: Theme.of(context).cardColor,
+                            borderRadius: BorderRadius.circular(26),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(
+                                    isDark ? 0.35 : 0.05),
+                                blurRadius: 18,
+                                offset: const Offset(0, 10),
+                              ),
+                            ],
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _buildTextField(
+                                controller: emailController,
+                                label: 'Correo electronico',
+                                type: TextInputType.emailAddress,
+                              ),
+                              const SizedBox(height: 16),
+                              _buildTextField(
+                                controller: passwordController,
+                                label: 'Contrasena',
+                                obscure: true,
+                              ),
+                              const SizedBox(height: 12),
+                              Align(
+                                alignment: Alignment.centerRight,
+                                child: Text(
+                                  'Olvidaste tu contrasena?',
+                                  style: TextStyle(
+                                    color:
+                                        Theme.of(context).colorScheme.primary,
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 16),
+                              if (error != null)
+                                Padding(
+                                  padding: const EdgeInsets.only(bottom: 12),
+                                  child: Text(
+                                    error!,
+                                    style: const TextStyle(
+                                      color: Colors.redAccent,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ),
+                              SizedBox(
+                                width: double.infinity,
+                                child: ElevatedButton(
+                                  onPressed: loading ? null : login,
+                                  child: loading
+                                      ? const SizedBox(
+                                          height: 20,
+                                          width: 20,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                            color: Colors.white,
+                                          ),
+                                        )
+                                      : const Text('Iniciar sesion'),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ),
-                      const SizedBox(height: 16),
-                      if (error != null)
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 12),
-                          child: Text(
-                            error!,
-                            style: const TextStyle(
-                              color: Colors.redAccent,
-                              fontWeight: FontWeight.w500,
+                      const SizedBox(height: 24),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(
+                            'Necesitas ayuda?',
+                            style: TextStyle(color: Colors.grey.shade600),
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            'Contacta al administrador',
+                            style: TextStyle(
+                              color: Theme.of(context).colorScheme.primary,
+                              fontWeight: FontWeight.w600,
                             ),
                           ),
-                        ),
-                      SizedBox(
-                        width: double.infinity,
-                        child: ElevatedButton(
-                          onPressed: loading ? null : login,
-                          child: loading
-                              ? const SizedBox(
-                                  height: 20,
-                                  width: 20,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    color: Colors.white,
-                                  ),
-                                )
-                              : const Text('Iniciar sesión'),
-                        ),
+                        ],
                       ),
                     ],
                   ),
                 ),
-                const SizedBox(height: 24),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(
-                      '¿Necesitas ayuda?',
-                      style: TextStyle(color: Colors.grey.shade600),
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      'Contacta al administrador',
-                      style: TextStyle(
-                        color: theme.colorScheme.primary,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
+              ),
+            );
+          },
         ),
       ),
     );

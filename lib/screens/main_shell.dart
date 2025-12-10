@@ -1,5 +1,3 @@
-import 'dart:ui';
-
 import 'package:flutter/material.dart';
 
 import '../models/inmueble.dart';
@@ -26,6 +24,7 @@ class _MainShellState extends State<MainShell> {
   late final PageController _pageController;
   List<Inmueble> _inmuebles = [];
   bool _loadingData = true;
+  static const double _floatingNavHeight = 90;
 
   @override
   void initState() {
@@ -74,6 +73,8 @@ class _MainShellState extends State<MainShell> {
 
   @override
   Widget build(BuildContext context) {
+    final bottomInset = MediaQuery.of(context).viewPadding.bottom;
+    final navOverlapPadding = _floatingNavHeight + bottomInset + 16;
     final pages = [
       DashboardScreen(
         user: _currentUser,
@@ -96,34 +97,23 @@ class _MainShellState extends State<MainShell> {
       ),
     ];
 
-    final theme = Theme.of(context);
-    final primary = theme.colorScheme.primary;
-    final textColor = theme.textTheme.bodyMedium?.color ?? Colors.black;
-    final bottomInset = MediaQuery.of(context).padding.bottom;
-
     return Scaffold(
-      backgroundColor: theme.scaffoldBackgroundColor,
-      body: PageView(
-        controller: _pageController,
-        physics: const BouncingScrollPhysics(),
-        onPageChanged: (index) => setState(() => _currentIndex = index),
-        children: pages,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      extendBody: true,
+      body: Padding(
+        padding: EdgeInsets.only(bottom: navOverlapPadding),
+        child: PageView(
+          controller: _pageController,
+          physics: const BouncingScrollPhysics(),
+          onPageChanged: (index) => setState(() => _currentIndex = index),
+          children: pages,
+        ),
       ),
-      bottomNavigationBar: _buildBottomNavigation(
-        theme: theme,
-        primary: primary,
-        textColor: textColor,
-        bottomInset: bottomInset,
-      ),
+      bottomNavigationBar: _buildBottomNavigation(),
     );
   }
 
-  Widget _buildBottomNavigation({
-    required ThemeData theme,
-    required Color primary,
-    required Color textColor,
-    required double bottomInset,
-  }) {
+  Widget _buildBottomNavigation() {
     final items = [
       _NavItem(icon: Icons.home_rounded, label: 'Inicio'),
       _NavItem(icon: Icons.account_balance_wallet_outlined, label: 'Pagos'),
@@ -131,53 +121,34 @@ class _MainShellState extends State<MainShell> {
       _NavItem(icon: Icons.person_outline, label: 'Perfil'),
     ];
 
-    final isDark = theme.brightness == Brightness.dark;
-    final Color glassColor =
-        isDark ? Colors.white.withOpacity(0.05) : Colors.white.withOpacity(0.85);
-    final Color borderColor = Colors.white.withOpacity(isDark ? 0.08 : 0.3);
-    final double extraBottom = bottomInset > 0 ? bottomInset : 12;
-
+    final theme = Theme.of(context);
+    final onSurface = theme.colorScheme.onSurface;
     return SafeArea(
-      top: false,
-      child: Padding(
-        padding: EdgeInsets.fromLTRB(16, 0, 16, extraBottom),
-        child: SizedBox(
-          height: 86,
-          child: Stack(
-            clipBehavior: Clip.none,
-            children: [
-              Positioned.fill(
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(34),
-                  child: BackdropFilter(
-                    filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-                    child: Container(
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(34),
-                        color: glassColor,
-                        border: Border.all(color: borderColor, width: 1),
-                        boxShadow: [
-                          BoxShadow(
-                            color:
-                                Colors.black.withOpacity(isDark ? 0.45 : 0.18),
-                            blurRadius: 30,
-                            offset: const Offset(0, 14),
-                          ),
-                        ],
-                      ),
-                    ),
+      minimum: const EdgeInsets.only(bottom: 16),
+      child: SizedBox(
+        height: _floatingNavHeight,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Material(
+            color: Colors.transparent,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: theme.cardColor,
+                borderRadius: BorderRadius.circular(30),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(
+                        theme.brightness == Brightness.dark ? 0.4 : 0.07),
+                    blurRadius: 24,
+                    offset: const Offset(0, 16),
                   ),
-                ),
+                ],
               ),
-              Row(
+              child: Row(
                 children: List.generate(items.length, (index) {
                   final selected = _currentIndex == index;
                   final item = items[index];
-                  final bool centralHighlight = index == 2;
-
-                  final Color selectedColor =
-                      centralHighlight ? Colors.white : primary;
-                  final Color unselectedColor = textColor.withOpacity(0.5);
 
                   return Expanded(
                     child: GestureDetector(
@@ -186,31 +157,25 @@ class _MainShellState extends State<MainShell> {
                       child: AnimatedContainer(
                         duration: const Duration(milliseconds: 220),
                         curve: Curves.easeOut,
-                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        padding: const EdgeInsets.symmetric(vertical: 4),
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             AnimatedContainer(
-                              duration: const Duration(milliseconds: 220),
-                              padding: const EdgeInsets.all(9),
+                            duration: const Duration(milliseconds: 220),
+                              padding:
+                                  selected ? const EdgeInsets.all(8) : const EdgeInsets.all(6),
                               decoration: selected
                                   ? BoxDecoration(
-                                      color: centralHighlight
-                                          ? primary
-                                          : primary.withOpacity(
-                                              isDark ? 0.22 : 0.18),
-                                      shape: centralHighlight
-                                          ? BoxShape.circle
-                                          : BoxShape.rectangle,
-                                      borderRadius: centralHighlight
-                                          ? null
-                                          : BorderRadius.circular(18),
+                                      color: const Color(0xff1d9bf0),
+                                      shape: BoxShape.circle,
                                     )
                                   : null,
                               child: Icon(
                                 item.icon,
-                                color:
-                                    selected ? selectedColor : unselectedColor,
+                                color: selected
+                                    ? Colors.white
+                                    : onSurface.withOpacity(0.55),
                               ),
                             ),
                             const SizedBox(height: 4),
@@ -219,8 +184,8 @@ class _MainShellState extends State<MainShell> {
                               style: TextStyle(
                                 fontSize: 12,
                                 color: selected
-                                    ? textColor.withOpacity(0.9)
-                                    : unselectedColor,
+                                    ? onSurface
+                                    : onSurface.withOpacity(0.55),
                                 fontWeight: selected
                                     ? FontWeight.w600
                                     : FontWeight.w500,
@@ -233,7 +198,7 @@ class _MainShellState extends State<MainShell> {
                   );
                 }),
               ),
-            ],
+            ),
           ),
         ),
       ),

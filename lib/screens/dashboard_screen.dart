@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
 
+import '../animations/shimmers.dart';
+import '../animations/stagger_list.dart';
+import '../animations/tap_effect.dart';
+import '../animations/transitions.dart';
 import '../models/inmueble.dart';
 import '../models/user.dart';
 
@@ -64,8 +68,11 @@ class DashboardScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final cardColor = theme.cardColor;
-    final shadowColor = theme.shadowColor ?? Colors.black.withOpacity(0.1);
+    final isDark = theme.brightness == Brightness.dark;
+    final cardColor = isDark ? theme.cardColor : const Color(0xfff0f1f6);
+    final shadowColor = Colors.black.withOpacity(isDark ? 0.25 : 0.06);
+    final textMuted = isDark ? Colors.grey.shade400 : Colors.grey.shade600;
+    final onSurface = theme.colorScheme.onSurface;
 
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
@@ -74,7 +81,7 @@ class DashboardScreen extends StatelessWidget {
         centerTitle: true,
       ),
       body: loading
-          ? const Center(child: CircularProgressIndicator())
+          ? _loadingSkeleton(cardColor)
           : RefreshIndicator(
               onRefresh: onRefresh,
               child: SingleChildScrollView(
@@ -84,29 +91,75 @@ class DashboardScreen extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      'Hola, ${user.displayName} 👋',
-                      style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                            fontWeight: FontWeight.w700,
-                          ),
+                    FadeSlideTransition(
+                      child: Text(
+                        'Hola, ${user.displayName}',
+                        style: theme.textTheme.headlineSmall?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
                     ),
                     const SizedBox(height: 6),
-                    Text(
-                      'Aqui tienes una vista rapida de tus finanzas.',
-                      style: TextStyle(color: Colors.grey.shade600),
+                    FadeSlideTransition(
+                      beginOffset: const Offset(0, 0.03),
+                      child: Text(
+                        'Aqui tienes una vista rapida de tus finanzas.',
+                        style: TextStyle(color: textMuted),
+                      ),
                     ),
                     const SizedBox(height: 24),
-                    _heroCard(theme),
+                    FadeSlideTransition(
+                      beginOffset: const Offset(0, 0.06),
+                      child: _heroCard(theme),
+                    ),
                     const SizedBox(height: 20),
-                    _statusRow(theme),
+                    FadeSlideTransition(
+                      beginOffset: const Offset(0, 0.04),
+                      child: _statusRow(cardColor, shadowColor, textMuted),
+                    ),
                     const SizedBox(height: 24),
-                    _proximoPagoCard(cardColor, shadowColor),
+                    FadeSlideTransition(
+                      beginOffset: const Offset(0, 0.04),
+                      child: _proximoPagoCard(
+                          cardColor, shadowColor, textMuted, onSurface),
+                    ),
                     const SizedBox(height: 24),
-                    _destacadosSection(cardColor, shadowColor),
+                    FadeSlideTransition(
+                      beginOffset: const Offset(0, 0.04),
+                      child: _destacadosSection(
+                          cardColor, shadowColor, textMuted, onSurface),
+                    ),
                   ],
                 ),
               ),
             ),
+    );
+  }
+
+  Widget _loadingSkeleton(Color cardColor) {
+    return SingleChildScrollView(
+      physics: const NeverScrollableScrollPhysics(),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 32),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: const [
+          ShimmerSkeleton(height: 22, width: 200),
+          SizedBox(height: 12),
+          ShimmerSkeleton(height: 16, width: 220),
+          SizedBox(height: 24),
+          ShimmerSkeleton(height: 180, borderRadius: BorderRadius.all(Radius.circular(24))),
+          SizedBox(height: 20),
+          ShimmerSkeleton(height: 80, borderRadius: BorderRadius.all(Radius.circular(18))),
+          SizedBox(height: 12),
+          ShimmerSkeleton(height: 80, borderRadius: BorderRadius.all(Radius.circular(18))),
+          SizedBox(height: 12),
+          ShimmerSkeleton(height: 80, borderRadius: BorderRadius.all(Radius.circular(18))),
+          SizedBox(height: 24),
+          ShimmerSkeleton(height: 120, borderRadius: BorderRadius.all(Radius.circular(18))),
+          SizedBox(height: 12),
+          ShimmerSkeleton(height: 120, borderRadius: BorderRadius.all(Radius.circular(18))),
+        ],
+      ),
     );
   }
 
@@ -117,17 +170,17 @@ class DashboardScreen extends StatelessWidget {
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: isDark
-              ? const [Color(0xff1d9bf0), Color(0xff123b7a)]
-              : const [Color(0xff1d9bf0), Color(0xff1c6ae8)],
+              ? const [Color(0xff1d9bf0), Color(0xff0f6fcf)]
+              : const [Color(0xff1d9bf0), Color(0xff4ba3ff)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(26),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(isDark ? 0.25 : 0.15),
-            blurRadius: 18,
-            offset: const Offset(0, 10),
+            color: Colors.black.withOpacity(0.18),
+            blurRadius: 22,
+            offset: const Offset(0, 12),
           ),
         ],
       ),
@@ -151,19 +204,25 @@ class DashboardScreen extends StatelessWidget {
           Row(
             children: [
               Expanded(
-                child: ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.white,
-                    foregroundColor: const Color(0xff1d9bf0),
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 24, vertical: 12),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(30),
+                child: TapEffect(
+                  onTap: onViewPayments,
+                  child: ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: isDark
+                          ? Colors.white.withOpacity(0.12)
+                          : Colors.white,
+                      foregroundColor:
+                          isDark ? Colors.white : const Color(0xff1d9bf0),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 24, vertical: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(30),
+                      ),
                     ),
+                    onPressed: onViewPayments,
+                    icon: const Icon(Icons.account_balance_wallet_outlined),
+                    label: const Text('Ir a pagos'),
                   ),
-                  onPressed: onViewPayments,
-                  icon: const Icon(Icons.account_balance_wallet_outlined),
-                  label: const Text('Ir a pagos'),
                 ),
               ),
               const SizedBox(width: 12),
@@ -193,7 +252,7 @@ class DashboardScreen extends StatelessWidget {
     );
   }
 
-  Widget _statusRow(ThemeData theme) {
+  Widget _statusRow(Color cardColor, Color shadowColor, Color textMuted) {
     final cards = [
       _StatusInfo(
         label: 'Al dia',
@@ -219,14 +278,27 @@ class DashboardScreen extends StatelessWidget {
       children: cards
           .map(
             (item) => Expanded(
-              child: _StatusCard(info: item, theme: theme),
+              child: FadeSlideTransition(
+                beginOffset: const Offset(0, 0.05),
+                child: _StatusCard(
+                  info: item,
+                  cardColor: cardColor,
+                  shadowColor: shadowColor,
+                  textMuted: textMuted,
+                ),
+              ),
             ),
           )
           .toList(),
     );
   }
 
-  Widget _proximoPagoCard(Color cardColor, Color shadowColor) {
+  Widget _proximoPagoCard(
+    Color cardColor,
+    Color shadowColor,
+    Color textMuted,
+    Color onSurface,
+  ) {
     final inmueble = _proximoPago;
     return Container(
       padding: const EdgeInsets.all(20),
@@ -235,7 +307,7 @@ class DashboardScreen extends StatelessWidget {
         borderRadius: BorderRadius.circular(22),
         boxShadow: [
           BoxShadow(
-            color: shadowColor.withOpacity(0.2),
+            color: shadowColor,
             blurRadius: 14,
             offset: const Offset(0, 8),
           ),
@@ -253,9 +325,9 @@ class DashboardScreen extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           if (inmueble == null)
-            const Text(
+            Text(
               'No hay pagos programados.',
-              style: TextStyle(color: Colors.grey),
+              style: TextStyle(color: textMuted),
             )
           else
             Row(
@@ -277,15 +349,16 @@ class DashboardScreen extends StatelessWidget {
                     children: [
                       Text(
                         inmueble.identificacion ?? 'Inmueble',
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontWeight: FontWeight.w600,
                           fontSize: 16,
+                          color: onSurface,
                         ),
                       ),
                       const SizedBox(height: 4),
                       Text(
                         'Fecha: ${inmueble.proximaFechaPago}',
-                        style: TextStyle(color: Colors.grey.shade600),
+                        style: TextStyle(color: textMuted),
                       ),
                     ],
                   ),
@@ -297,7 +370,12 @@ class DashboardScreen extends StatelessWidget {
     );
   }
 
-  Widget _destacadosSection(Color cardColor, Color shadowColor) {
+  Widget _destacadosSection(
+    Color cardColor,
+    Color shadowColor,
+    Color textMuted,
+    Color onSurface,
+  ) {
     if (_inmueblesCruciales.isEmpty) {
       return const SizedBox.shrink();
     }
@@ -312,68 +390,75 @@ class DashboardScreen extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 12),
-        ..._inmueblesCruciales.map(
-          (inmueble) => Container(
-            margin: const EdgeInsets.only(bottom: 14),
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: cardColor,
-              borderRadius: BorderRadius.circular(18),
-              boxShadow: [
-                BoxShadow(
-                  color: shadowColor.withOpacity(0.18),
-                  blurRadius: 12,
-                  offset: const Offset(0, 6),
-                ),
-              ],
-            ),
-            child: Row(
-              children: [
-                Container(
-                  height: 48,
-                  width: 48,
+        StaggeredList(
+          children: _inmueblesCruciales
+              .map(
+                (inmueble) => Container(
+                  margin: const EdgeInsets.only(bottom: 14),
+                  padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: const Color(0xfffef3c7),
-                    borderRadius: BorderRadius.circular(14),
+                    color: cardColor,
+                    borderRadius: BorderRadius.circular(18),
+                    boxShadow: [
+                      BoxShadow(
+                        color: shadowColor,
+                        blurRadius: 12,
+                        offset: const Offset(0, 6),
+                      ),
+                    ],
                   ),
-                  child: const Icon(Icons.home_work_outlined,
-                      color: Color(0xfff59e0b)),
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                  child: Row(
                     children: [
-                      Text(
-                        inmueble.identificacion ?? 'Inmueble',
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w600,
-                          fontSize: 15,
+                      Container(
+                        height: 48,
+                        width: 48,
+                        decoration: BoxDecoration(
+                          color: const Color(0xfffef3c7),
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        child: const Icon(Icons.home_work_outlined,
+                            color: Color(0xfff59e0b)),
+                      ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              inmueble.identificacion ?? 'Inmueble',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w600,
+                                fontSize: 15,
+                                color: onSurface,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              inmueble.tipo ?? 'Propiedad',
+                              style: TextStyle(color: textMuted),
+                            ),
+                          ],
                         ),
                       ),
-                      const SizedBox(height: 4),
                       Text(
-                        inmueble.tipo ?? 'Propiedad',
-                        style: TextStyle(color: Colors.grey.shade600),
+                        _formatCurrency(
+                          double.tryParse(
+                                (inmueble.deudaActual ?? '')
+                                    .replaceAll(',', '.'),
+                              ) ??
+                              0,
+                        ),
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 15,
+                          color: onSurface,
+                        ),
                       ),
                     ],
                   ),
                 ),
-                Text(
-                  _formatCurrency(
-                    double.tryParse(
-                          (inmueble.deudaActual ?? '').replaceAll(',', '.'),
-                        ) ??
-                        0,
-                  ),
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 15,
-                  ),
-                ),
-              ],
-            ),
-          ),
+              )
+              .toList(),
         ),
       ],
     );
@@ -400,26 +485,30 @@ class _StatusInfo {
 
 class _StatusCard extends StatelessWidget {
   final _StatusInfo info;
-  final ThemeData theme;
+  final Color cardColor;
+  final Color shadowColor;
+  final Color textMuted;
 
-  const _StatusCard({required this.info, required this.theme});
+  const _StatusCard({
+    required this.info,
+    required this.cardColor,
+    required this.shadowColor,
+    required this.textMuted,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final isDark = theme.brightness == Brightness.dark;
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 4),
       padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
       decoration: BoxDecoration(
-        color: theme.cardColor,
+        color: cardColor,
         borderRadius: BorderRadius.circular(18),
         boxShadow: [
           BoxShadow(
-            color:
-                (theme.shadowColor ?? Colors.black.withOpacity(0.1))
-                    .withOpacity(isDark ? 0.3 : 0.15),
-            blurRadius: 16,
-            offset: const Offset(0, 8),
+            color: shadowColor,
+            blurRadius: 12,
+            offset: const Offset(0, 6),
           ),
         ],
       ),
@@ -439,7 +528,7 @@ class _StatusCard extends StatelessWidget {
             info.label,
             style: TextStyle(
               fontSize: 13,
-              color: Colors.grey.shade600,
+              color: textMuted,
             ),
           ),
         ],

@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../animations/shimmers.dart';
+import '../animations/stagger_list.dart';
+import '../animations/transitions.dart';
 import '../models/inmueble.dart';
 
 class PaymentsScreen extends StatelessWidget {
@@ -43,6 +46,11 @@ class PaymentsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final cardColor = isDark ? theme.cardColor : const Color(0xfff0f1f6);
+    final shadowColor = Colors.black.withOpacity(isDark ? 0.25 : 0.06);
+    final textMuted = isDark ? Colors.grey.shade400 : Colors.grey.shade600;
+
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(
@@ -50,7 +58,7 @@ class PaymentsScreen extends StatelessWidget {
         centerTitle: true,
       ),
       body: loading
-          ? const Center(child: CircularProgressIndicator())
+          ? _loadingSkeleton()
           : RefreshIndicator(
               onRefresh: onRefresh,
               child: ListView(
@@ -58,7 +66,7 @@ class PaymentsScreen extends StatelessWidget {
                 padding:
                     const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
                 children: [
-                  _summaryCard(theme),
+                  _summaryCard(cardColor, shadowColor, textMuted),
                   const SizedBox(height: 24),
                   Text(
                     'Detalle por inmueble',
@@ -69,13 +77,18 @@ class PaymentsScreen extends StatelessWidget {
                     Container(
                       padding: const EdgeInsets.all(20),
                       decoration: BoxDecoration(
-                        color: theme.cardColor,
+                        color: cardColor,
                         borderRadius: BorderRadius.circular(20),
                       ),
                       child: const Text('Sin inmuebles registrados.'),
                     )
                   else
-                    ...inmuebles.map((inmueble) => _inmuebleTile(inmueble, theme)),
+                    StaggeredList(
+                      children: inmuebles
+                          .map((i) =>
+                              _inmuebleTile(i, cardColor, shadowColor, textMuted))
+                          .toList(),
+                    ),
                   const SizedBox(height: 32),
                   Text(
                     'Historial reciente',
@@ -86,13 +99,18 @@ class PaymentsScreen extends StatelessWidget {
                     Container(
                       padding: const EdgeInsets.all(20),
                       decoration: BoxDecoration(
-                        color: theme.cardColor,
+                        color: cardColor,
                         borderRadius: BorderRadius.circular(20),
                       ),
-                      child: const Text('Aun no hay pagos registrados.'),
+                      child: const Text('Aún no hay pagos registrados.'),
                     )
                   else
-                    ..._historial.map((pago) => _historialTile(pago, theme)),
+                    StaggeredList(
+                      children: _historial
+                          .map((h) => _historialTile(
+                              h, cardColor, shadowColor, textMuted))
+                          .toList(),
+                    ),
                   const SizedBox(height: 40),
                 ],
               ),
@@ -100,20 +118,41 @@ class PaymentsScreen extends StatelessWidget {
     );
   }
 
-  Widget _summaryCard(ThemeData theme) {
-    final subtle =
-        theme.textTheme.bodyMedium?.color?.withOpacity(0.65) ?? Colors.grey;
+  Widget _loadingSkeleton() {
+    return ListView(
+      physics: const NeverScrollableScrollPhysics(),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 28),
+      children: const [
+        ShimmerSkeleton(height: 140, borderRadius: BorderRadius.all(Radius.circular(24))),
+        SizedBox(height: 24),
+        ShimmerSkeleton(height: 20, width: 160),
+        SizedBox(height: 12),
+        ShimmerSkeleton(height: 100, borderRadius: BorderRadius.all(Radius.circular(18))),
+        SizedBox(height: 12),
+        ShimmerSkeleton(height: 100, borderRadius: BorderRadius.all(Radius.circular(18))),
+        SizedBox(height: 12),
+        ShimmerSkeleton(height: 100, borderRadius: BorderRadius.all(Radius.circular(18))),
+        SizedBox(height: 24),
+        ShimmerSkeleton(height: 20, width: 180),
+        SizedBox(height: 12),
+        ShimmerSkeleton(height: 80, borderRadius: BorderRadius.all(Radius.circular(16))),
+        SizedBox(height: 12),
+        ShimmerSkeleton(height: 80, borderRadius: BorderRadius.all(Radius.circular(16))),
+      ],
+    );
+  }
+
+  Widget _summaryCard(Color cardColor, Color shadowColor, Color textMuted) {
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: theme.cardColor,
+        color: cardColor,
         borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
-            color: (theme.shadowColor ?? Colors.black.withOpacity(0.1))
-                .withOpacity(theme.brightness == Brightness.dark ? 0.35 : 0.15),
-            blurRadius: 20,
-            offset: const Offset(0, 12),
+            color: shadowColor,
+            blurRadius: 18,
+            offset: const Offset(0, 10),
           ),
         ],
       ),
@@ -123,9 +162,9 @@ class PaymentsScreen extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
+                const Text(
                   'Total adeudado',
-                  style: TextStyle(color: subtle),
+                  style: TextStyle(color: Colors.grey),
                 ),
                 const SizedBox(height: 6),
                 Text(
@@ -138,47 +177,42 @@ class PaymentsScreen extends StatelessWidget {
                 const SizedBox(height: 8),
                 Text(
                   '${inmuebles.length} inmuebles',
-                  style: TextStyle(color: subtle),
+                  style: TextStyle(color: textMuted),
                 ),
               ],
             ),
           ),
           const SizedBox(width: 20),
-          Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: theme.colorScheme.primary.withOpacity(0.12),
-              shape: BoxShape.circle,
-            ),
-            child: Icon(
-              Icons.pie_chart_rounded,
-              size: 32,
-              color: theme.colorScheme.primary,
-            ),
-          )
+          const Icon(
+            Icons.pie_chart_rounded,
+            size: 48,
+            color: Color(0xff1d9bf0),
+          ),
         ],
       ),
     );
   }
 
-  Widget _inmuebleTile(Inmueble inmueble, ThemeData theme) {
+  Widget _inmuebleTile(
+    Inmueble inmueble,
+    Color cardColor,
+    Color shadowColor,
+    Color textMuted,
+  ) {
     final deuda =
         double.tryParse((inmueble.deudaActual ?? '').replaceAll(',', '.')) ?? 0;
-    final subtle =
-        theme.textTheme.bodyMedium?.color?.withOpacity(0.65) ?? Colors.grey;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 18),
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: theme.cardColor,
+        color: cardColor,
         borderRadius: BorderRadius.circular(18),
         boxShadow: [
           BoxShadow(
-            color: (theme.shadowColor ?? Colors.black.withOpacity(0.1))
-                .withOpacity(theme.brightness == Brightness.dark ? 0.3 : 0.12),
-            blurRadius: 16,
-            offset: const Offset(0, 8),
+            color: shadowColor,
+            blurRadius: 12,
+            offset: const Offset(0, 6),
           ),
         ],
       ),
@@ -187,8 +221,7 @@ class PaymentsScreen extends StatelessWidget {
         children: [
           Row(
             children: [
-              Icon(Icons.home_work_outlined,
-                  color: theme.colorScheme.primary),
+              const Icon(Icons.home_work_outlined, color: Color(0xff1d9bf0)),
               const SizedBox(width: 10),
               Expanded(
                 child: Column(
@@ -204,7 +237,7 @@ class PaymentsScreen extends StatelessWidget {
                     const SizedBox(height: 4),
                     Text(
                       inmueble.tipo ?? 'Propiedad',
-                      style: TextStyle(color: subtle),
+                      style: TextStyle(color: textMuted),
                     ),
                   ],
                 ),
@@ -219,9 +252,9 @@ class PaymentsScreen extends StatelessWidget {
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
+                  const Text(
                     'Deuda',
-                    style: TextStyle(color: subtle),
+                    style: TextStyle(color: Colors.grey),
                   ),
                   const SizedBox(height: 4),
                   Text(
@@ -236,9 +269,9 @@ class PaymentsScreen extends StatelessWidget {
               Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  Text(
-                    'Proximo pago',
-                    style: TextStyle(color: subtle),
+                  const Text(
+                    'Próximo pago',
+                    style: TextStyle(color: Colors.grey),
                   ),
                   const SizedBox(height: 4),
                   Text(
@@ -264,16 +297,16 @@ class PaymentsScreen extends StatelessWidget {
                   .take(3)
                   .map(
                     (pago) => Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          pago.fecha ?? '--',
-                          style: TextStyle(color: subtle),
-                        ),
-                        Text(
-                          '\$${pago.monto ?? '--'}',
-                          style: const TextStyle(fontWeight: FontWeight.w600),
-                        ),
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              pago.fecha ?? '--',
+                              style: TextStyle(color: textMuted),
+                            ),
+                            Text(
+                              '\$${pago.monto ?? '--'}',
+                              style: const TextStyle(fontWeight: FontWeight.w600),
+                            ),
                       ],
                     ),
                   )
@@ -292,7 +325,7 @@ class PaymentsScreen extends StatelessWidget {
     switch (estado) {
       case EstadoInmueble.alDia:
         color = const Color(0xff16a34a);
-        texto = 'Al dia';
+        texto = 'Al día';
         break;
       case EstadoInmueble.pendiente:
         color = const Color(0xfff59e0b);
@@ -320,19 +353,23 @@ class PaymentsScreen extends StatelessWidget {
     );
   }
 
-  Widget _historialTile(_HistorialPago pago, ThemeData theme) {
+  Widget _historialTile(
+    _HistorialPago pago,
+    Color cardColor,
+    Color shadowColor,
+    Color textMuted,
+  ) {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: theme.cardColor,
+        color: cardColor,
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: (theme.shadowColor ?? Colors.black.withOpacity(0.1))
-                .withOpacity(theme.brightness == Brightness.dark ? 0.25 : 0.1),
-            blurRadius: 16,
-            offset: const Offset(0, 8),
+            color: shadowColor,
+            blurRadius: 10,
+            offset: const Offset(0, 4),
           ),
         ],
       ),
@@ -342,10 +379,10 @@ class PaymentsScreen extends StatelessWidget {
             height: 44,
             width: 44,
             decoration: BoxDecoration(
-              color: theme.colorScheme.primary.withOpacity(0.12),
+              color: const Color(0xffe0f2fe),
               borderRadius: BorderRadius.circular(12),
             ),
-            child: Icon(Icons.receipt_long, color: theme.colorScheme.primary),
+            child: const Icon(Icons.receipt_long, color: Color(0xff0ea5e9)),
           ),
           const SizedBox(width: 14),
           Expanded(
@@ -360,11 +397,8 @@ class PaymentsScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  '${pago.fecha} - ${pago.inmueble}',
-                  style: TextStyle(
-                    color: theme.textTheme.bodyMedium?.color?.withOpacity(0.65),
-                    fontSize: 12,
-                  ),
+                  '${pago.fecha} • ${pago.inmueble}',
+                  style: TextStyle(color: textMuted, fontSize: 12),
                 ),
               ],
             ),
@@ -411,7 +445,3 @@ class _HistorialPago {
     required this.estado,
   });
 }
-
-
-
-

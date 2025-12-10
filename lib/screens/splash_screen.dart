@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../animations/transitions.dart';
 import '../models/user.dart';
 import '../services/auth_service.dart';
 import 'main_shell.dart';
@@ -32,9 +33,7 @@ class _SplashScreenState extends State<SplashScreen> {
       if (user.hasValidSession) {
         Navigator.pushReplacement(
           context,
-          MaterialPageRoute(
-            builder: (_) => MainShell(user: user, token: token),
-          ),
+          fadeSlideRoute(MainShell(user: user, token: token)),
         );
         return;
       } else {
@@ -44,42 +43,39 @@ class _SplashScreenState extends State<SplashScreen> {
 
     Navigator.pushReplacement(
       context,
-      MaterialPageRoute(builder: (_) => const LoginScreen()),
+      fadeSlideRoute(const LoginScreen()),
     );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.deepPurple,
+      backgroundColor: const Color(0xff1d9bf0),
       body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            // LOGO
-            const Icon(
-              Icons.apartment_rounded,
-              size: 90,
-              color: Colors.white,
-            ),
-
-            const SizedBox(height: 25),
-
-            const Text(
-              "Vecinus App",
-              style: TextStyle(
+        child: FadeSlideTransition(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: const [
+              Icon(
+                Icons.apartment_rounded,
+                size: 90,
                 color: Colors.white,
-                fontSize: 28,
-                fontWeight: FontWeight.bold,
               ),
-            ),
-
-            const SizedBox(height: 40),
-
-            const CircularProgressIndicator(
-              color: Colors.white,
-            )
-          ],
+              SizedBox(height: 25),
+              Text(
+                "Vecinus App",
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 28,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              SizedBox(height: 40),
+              CircularProgressIndicator(
+                color: Colors.white,
+              )
+            ],
+          ),
         ),
       ),
     );

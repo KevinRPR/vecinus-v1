@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../animations/stagger_list.dart';
+import '../animations/transitions.dart';
+
 class NotificationsScreen extends StatefulWidget {
   final String token;
 
@@ -43,28 +46,49 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final cardColor = isDark ? theme.cardColor : const Color(0xfff0f1f6);
+    final shadowColor = Colors.black.withOpacity(isDark ? 0.25 : 0.06);
+    final textMuted = isDark ? Colors.grey.shade400 : Colors.grey.shade600;
+
     return Scaffold(
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(
         title: const Text('Alertas'),
         centerTitle: true,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: () => setState(() => _items = _generateNotifications()),
-          )
-        ],
       ),
-      body: ListView.separated(
-        padding: const EdgeInsets.all(20),
-        itemBuilder: (_, index) => _notificationTile(_items[index]),
-        separatorBuilder: (_, __) => const SizedBox(height: 12),
-        itemCount: _items.length,
+      body: RefreshIndicator(
+        onRefresh: () async =>
+            setState(() => _items = _generateNotifications()),
+        child: FadeSlideTransition(
+          beginOffset: const Offset(0, 0.02),
+          child: ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.all(20),
+            children: [
+              for (int i = 0; i < _items.length; i++) ...[
+                _notificationTile(
+                  _items[i],
+                  cardColor,
+                  shadowColor,
+                  textMuted,
+                ),
+                if (i != _items.length - 1) const SizedBox(height: 12),
+              ]
+            ],
+          ),
+        ),
       ),
     );
   }
 
-  Widget _notificationTile(_NotificationItem item) {
+  Widget _notificationTile(
+    _NotificationItem item,
+    Color cardColor,
+    Color shadowColor,
+    Color textMuted,
+  ) {
     final color = switch (item.type) {
       NotificationType.event => const Color(0xff2563eb),
       NotificationType.warning => const Color(0xfff97316),
@@ -76,11 +100,6 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       NotificationType.info => Icons.notifications_active_outlined,
     };
 
-    final theme = Theme.of(context);
-    final cardColor = theme.cardColor;
-    final isDark = theme.brightness == Brightness.dark;
-    final baseText = theme.textTheme.bodyMedium?.color ?? Colors.black87;
-
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -88,10 +107,9 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         borderRadius: BorderRadius.circular(18),
         boxShadow: [
           BoxShadow(
-            color: (theme.shadowColor ?? Colors.black.withOpacity(0.1))
-                .withOpacity(isDark ? 0.35 : 0.12),
-            blurRadius: 18,
-            offset: const Offset(0, 10),
+            color: shadowColor,
+            blurRadius: 12,
+            offset: const Offset(0, 6),
           ),
         ],
       ),
@@ -101,7 +119,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
             height: 44,
             width: 44,
             decoration: BoxDecoration(
-              color: color.withOpacity(isDark ? 0.22 : 0.12),
+              color: color.withOpacity(0.12),
               borderRadius: BorderRadius.circular(14),
             ),
             child: Icon(icon, color: color),
@@ -113,26 +131,20 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
               children: [
                 Text(
                   item.title,
-                  style: TextStyle(
+                  style: const TextStyle(
                     fontWeight: FontWeight.w600,
                     fontSize: 15,
-                    color: baseText,
                   ),
                 ),
                 const SizedBox(height: 4),
                 Text(
                   item.subtitle,
-                  style: TextStyle(
-                    color: baseText.withOpacity(0.75),
-                  ),
+                  style: TextStyle(color: textMuted),
                 ),
                 const SizedBox(height: 6),
                 Text(
                   _formatTimeAgo(item.timestamp),
-                  style: TextStyle(
-                    color: baseText.withOpacity(0.6),
-                    fontSize: 12,
-                  ),
+                  style: TextStyle(color: textMuted, fontSize: 12),
                 ),
               ],
             ),
