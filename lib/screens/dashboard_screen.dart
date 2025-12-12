@@ -424,34 +424,33 @@ class DashboardScreen extends StatelessWidget {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(
-                              inmueble.identificacion ?? 'Inmueble',
-                              style: TextStyle(
-                                fontWeight: FontWeight.w600,
-                                fontSize: 15,
-                                color: onSurface,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              inmueble.tipo ?? 'Propiedad',
-                              style: TextStyle(color: textMuted),
-                            ),
-                          ],
-                        ),
-                      ),
                       Text(
-                        _formatCurrency(
-                          double.tryParse(
-                                (inmueble.deudaActual ?? '')
-                                    .replaceAll(',', '.'),
-                              ) ??
-                              0,
-                        ),
+                        inmueble.identificacion ?? 'Inmueble',
                         style: TextStyle(
-                          fontWeight: FontWeight.bold,
+                          fontWeight: FontWeight.w600,
                           fontSize: 15,
-                          color: onSurface,
+                         color: onSurface,
+                       ),
+                     ),
+                     const SizedBox(height: 4),
+                     Text(
+                       inmueble.tipo ?? 'Propiedad',
+                       style: TextStyle(color: textMuted),
+                     ),
+                   ],
+                 ),
+               ),
+                Text(
+                  _formatCurrency(
+                    double.tryParse(
+                          (inmueble.deudaActual ?? '').replaceAll(',', '.'),
+                        ) ??
+                        0,
+                  ),
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 15,
+                    color: onSurface,
                         ),
                       ),
                     ],

@@ -8,6 +8,7 @@ import '../animations/transitions.dart';
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
 import '../theme_controller.dart';
+import 'login_screen.dart';
 
 class UserScreen extends StatefulWidget {
   final User user;
@@ -344,7 +345,7 @@ class _UserScreenState extends State<UserScreen> {
                               await AuthService.logout();
                               if (!mounted) return;
                               Navigator.of(context).pushAndRemoveUntil(
-                                fadeSlideRoute(const LoginScreen()),
+                                fadeSlideRoute(LoginScreen()),
                                 (route) => false,
                               );
                             },

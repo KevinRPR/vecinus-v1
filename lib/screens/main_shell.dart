@@ -162,12 +162,12 @@ class _MainShellState extends State<MainShell> {
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             AnimatedContainer(
-                            duration: const Duration(milliseconds: 220),
+                              duration: const Duration(milliseconds: 220),
                               padding:
                                   selected ? const EdgeInsets.all(8) : const EdgeInsets.all(6),
                               decoration: selected
-                                  ? BoxDecoration(
-                                      color: const Color(0xff1d9bf0),
+                                  ? const BoxDecoration(
+                                      color: Color(0xff1d9bf0),
                                       shape: BoxShape.circle,
                                     )
                                   : null,
@@ -186,9 +186,8 @@ class _MainShellState extends State<MainShell> {
                                 color: selected
                                     ? onSurface
                                     : onSurface.withOpacity(0.55),
-                                fontWeight: selected
-                                    ? FontWeight.w600
-                                    : FontWeight.w500,
+                                fontWeight:
+                                    selected ? FontWeight.w600 : FontWeight.w500,
                               ),
                             ),
                           ],
