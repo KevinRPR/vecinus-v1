@@ -1,9 +1,9 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 
 import '../animations/shimmers.dart';
 import '../animations/stagger_list.dart';
-import '../animations/transitions.dart';
 import '../models/inmueble.dart';
+import 'payment_detail_screen.dart';
 
 class PaymentsScreen extends StatelessWidget {
   final List<Inmueble> inmuebles;
@@ -23,25 +23,6 @@ class PaymentsScreen extends StatelessWidget {
             sum +
             (double.tryParse((i.deudaActual ?? '').replaceAll(',', '.')) ?? 0),
       );
-
-  List<_HistorialPago> get _historial {
-    final List<_HistorialPago> history = [];
-    for (final inmueble in inmuebles) {
-      for (final pago in inmueble.pagos) {
-        history.add(
-          _HistorialPago(
-            inmueble: inmueble.identificacion ?? inmueble.idInmueble,
-            descripcion: pago.descripcion ?? 'Pago',
-            fecha: pago.fecha ?? '',
-            monto: pago.monto ?? '',
-            estado: pago.estado ?? '',
-          ),
-        );
-      }
-    }
-    history.sort((a, b) => b.fecha.compareTo(a.fecha));
-    return history.take(5).toList();
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -83,35 +64,16 @@ class PaymentsScreen extends StatelessWidget {
                       child: const Text('Sin inmuebles registrados.'),
                     )
                   else
-                    StaggeredList(
-                      children: inmuebles
-                          .map((i) =>
-                              _inmuebleTile(i, cardColor, shadowColor, textMuted))
-                          .toList(),
-                    ),
-                  const SizedBox(height: 32),
-                  Text(
-                    'Historial reciente',
-                    style: theme.textTheme.titleMedium,
-                  ),
-                  const SizedBox(height: 12),
-                  if (_historial.isEmpty)
-                    Container(
-                      padding: const EdgeInsets.all(20),
-                      decoration: BoxDecoration(
-                        color: cardColor,
-                        borderRadius: BorderRadius.circular(20),
+                    Column(
+                      children: _buildGroupedByCondominio(
+                        context,
+                        isDark,
+                        cardColor,
+                        shadowColor,
+                        textMuted,
                       ),
-                      child: const Text('Aún no hay pagos registrados.'),
-                    )
-                  else
-                    StaggeredList(
-                      children: _historial
-                          .map((h) => _historialTile(
-                              h, cardColor, shadowColor, textMuted))
-                          .toList(),
                     ),
-                  const SizedBox(height: 40),
+                  const SizedBox(height: 24),
                 ],
               ),
             ),
@@ -193,7 +155,59 @@ class PaymentsScreen extends StatelessWidget {
     );
   }
 
+  List<Widget> _buildGroupedByCondominio(
+    BuildContext context,
+    bool isDark,
+    Color cardColor,
+    Color shadowColor,
+    Color textMuted,
+  ) {
+    final Map<String, List<Inmueble>> grouped = {};
+    for (final inmueble in inmuebles) {
+      final label = _condominioLabel(inmueble);
+      grouped.putIfAbsent(label, () => []).add(inmueble);
+    }
+
+    final sortedKeys = grouped.keys.toList()..sort();
+    return sortedKeys
+        .map(
+          (key) => Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8, top: 4),
+                child: Text(
+                  key,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              StaggeredList(
+                children: grouped[key]!
+                    .map(
+                      (i) => _inmuebleTile(
+                        context,
+                        isDark,
+                        i,
+                        cardColor,
+                        shadowColor,
+                        textMuted,
+                      ),
+                    )
+                    .toList(),
+              ),
+              const SizedBox(height: 8),
+            ],
+          ),
+        )
+        .toList();
+  }
+
   Widget _inmuebleTile(
+    BuildContext context,
+    bool isDark,
     Inmueble inmueble,
     Color cardColor,
     Color shadowColor,
@@ -201,12 +215,22 @@ class PaymentsScreen extends StatelessWidget {
   ) {
     final deuda =
         double.tryParse((inmueble.deudaActual ?? '').replaceAll(',', '.')) ?? 0;
+    final sinDeuda = deuda <= 0;
+    final tileColor = sinDeuda
+        ? (isDark ? const Color(0xff0f2d1a) : const Color(0xffecfdf3))
+        : cardColor;
+    final badgeColor =
+        sinDeuda ? const Color(0xff16a34a) : const Color(0xff1d9bf0);
+    final textColor =
+        sinDeuda ? (isDark ? const Color(0xff6ee7a9) : const Color(0xff166534)) : null;
+    final mutedLocal =
+        sinDeuda ? (isDark ? const Color(0xff34d399) : const Color(0xff15803d)) : textMuted;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 18),
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: cardColor,
+        color: tileColor,
         borderRadius: BorderRadius.circular(18),
         boxShadow: [
           BoxShadow(
@@ -221,7 +245,7 @@ class PaymentsScreen extends StatelessWidget {
         children: [
           Row(
             children: [
-              const Icon(Icons.home_work_outlined, color: Color(0xff1d9bf0)),
+              Icon(Icons.home_work_outlined, color: badgeColor),
               const SizedBox(width: 10),
               Expanded(
                 child: Column(
@@ -229,15 +253,25 @@ class PaymentsScreen extends StatelessWidget {
                   children: [
                     Text(
                       inmueble.identificacion ?? 'Inmueble',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontWeight: FontWeight.w600,
                         fontSize: 16,
+                        color: textColor,
                       ),
                     ),
                     const SizedBox(height: 4),
                     Text(
                       inmueble.tipo ?? 'Propiedad',
-                      style: TextStyle(color: textMuted),
+                      style: TextStyle(color: mutedLocal),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      _condominioLabel(inmueble),
+                      style: TextStyle(
+                        color: mutedLocal,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ],
                 ),
@@ -246,6 +280,24 @@ class PaymentsScreen extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 12),
+          if (sinDeuda) ...[
+            Row(
+              children: const [
+                Icon(Icons.emoji_events_outlined, color: Color(0xff16a34a)),
+                SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Sin deuda pendiente. ¡Gracias por estar al dia!',
+                    style: TextStyle(
+                      color: Color(0xff166534),
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+          ],
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -263,6 +315,8 @@ class PaymentsScreen extends StatelessWidget {
                       fontWeight: FontWeight.bold,
                       fontSize: 16,
                     ),
+                    softWrap: true,
+                    overflow: TextOverflow.visible,
                   ),
                 ],
               ),
@@ -270,7 +324,7 @@ class PaymentsScreen extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   const Text(
-                    'Próximo pago',
+                    'Proximo pago',
                     style: TextStyle(color: Colors.grey),
                   ),
                   const SizedBox(height: 4),
@@ -282,37 +336,15 @@ class PaymentsScreen extends StatelessWidget {
               ),
             ],
           ),
-          if (inmueble.pagos.isNotEmpty) ...[
-            const SizedBox(height: 12),
-            const Text(
-              'Historial',
-              style: TextStyle(
-                fontWeight: FontWeight.w600,
-                fontSize: 13,
-              ),
+          const SizedBox(height: 14),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton.icon(
+              onPressed: () => _openPaymentDetail(context, inmueble),
+              icon: const Icon(Icons.history),
+              label: const Text('Ver mas'),
             ),
-            const SizedBox(height: 6),
-            Column(
-              children: inmueble.pagos
-                  .take(3)
-                  .map(
-                    (pago) => Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              pago.fecha ?? '--',
-                              style: TextStyle(color: textMuted),
-                            ),
-                            Text(
-                              '\$${pago.monto ?? '--'}',
-                              style: const TextStyle(fontWeight: FontWeight.w600),
-                            ),
-                      ],
-                    ),
-                  )
-                  .toList(),
-            ),
-          ],
+          ),
         ],
       ),
     );
@@ -325,7 +357,7 @@ class PaymentsScreen extends StatelessWidget {
     switch (estado) {
       case EstadoInmueble.alDia:
         color = const Color(0xff16a34a);
-        texto = 'Al día';
+        texto = 'Al dia';
         break;
       case EstadoInmueble.pendiente:
         color = const Color(0xfff59e0b);
@@ -353,95 +385,27 @@ class PaymentsScreen extends StatelessWidget {
     );
   }
 
-  Widget _historialTile(
-    _HistorialPago pago,
-    Color cardColor,
-    Color shadowColor,
-    Color textMuted,
-  ) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: cardColor,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: shadowColor,
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          Container(
-            height: 44,
-            width: 44,
-            decoration: BoxDecoration(
-              color: const Color(0xffe0f2fe),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: const Icon(Icons.receipt_long, color: Color(0xff0ea5e9)),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  pago.descripcion,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  '${pago.fecha} • ${pago.inmueble}',
-                  style: TextStyle(color: textMuted, fontSize: 12),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 12),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text(
-                '\$${pago.monto}',
-                style: const TextStyle(fontWeight: FontWeight.w600),
-              ),
-              Text(
-                pago.estado,
-                style: TextStyle(
-                  color: pago.estado.toLowerCase().contains('pend')
-                      ? const Color(0xfff59e0b)
-                      : const Color(0xff16a34a),
-                  fontSize: 12,
-                ),
-              ),
-            ],
-          )
-        ],
+  void _openPaymentDetail(BuildContext context, Inmueble inmueble) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => PaymentDetailScreen(
+          inmueble: inmueble,
+          totalDeuda: double.tryParse(
+                (inmueble.deudaActual ?? '').replaceAll(',', '.'),
+              ) ??
+              0,
+        ),
       ),
     );
   }
 
+  String _condominioLabel(Inmueble inmueble) {
+    final nombre = inmueble.nombreCondominio;
+    if (nombre != null && nombre.trim().isNotEmpty) {
+      return nombre.trim();
+    }
+    return 'Condominio #${inmueble.idCondominio}';
+  }
+
   String _formatCurrency(double value) => '\$${value.toStringAsFixed(2)}';
-}
-
-class _HistorialPago {
-  final String inmueble;
-  final String descripcion;
-  final String fecha;
-  final String monto;
-  final String estado;
-
-  _HistorialPago({
-    required this.inmueble,
-    required this.descripcion,
-    required this.fecha,
-    required this.monto,
-    required this.estado,
-  });
 }

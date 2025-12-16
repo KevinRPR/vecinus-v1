@@ -62,6 +62,7 @@ function fetch_inmuebles(PDO $conn, int $userId): array
             i.id_usuario,
             i.alicuota,
             i.estado,
+            c.nombre AS condominio_nombre,
             i.torre,
             i.piso,
             i.identificacion,
@@ -71,6 +72,8 @@ function fetch_inmuebles(PDO $conn, int $userId): array
             i.tipo,
             i.correlativo
         FROM public.inmueble i
+        LEFT JOIN public.condominio c
+            ON c.id_condominio = i.id_condominio
         LEFT JOIN public.propietario_inmueble pi 
             ON pi.id_inmueble = i.id_inmueble
         WHERE i.id_usuario = :id_usuario
@@ -100,9 +103,13 @@ function enrich_with_cxc(PDO $conn, array $inmuebles): array
             nc.monto_total,
             nc.monto_pagado,
             nc.estado,
+            nc.token,
+            rc.token AS token_recibo,
             m.codigo AS moneda
         FROM notificacion_cobro nc
         LEFT JOIN moneda m ON nc.id_moneda = m.id_moneda
+        LEFT JOIN recibo_destino_fondos rdf ON rdf.id_notificacion = nc.id_notificacion
+        LEFT JOIN recibo_cabecera rc ON rdf.id_recibo = rc.id_recibo
         WHERE nc.id_inmueble IN ($placeholders)
     ";
 
@@ -154,6 +161,10 @@ function enrich_with_cxc(PDO $conn, array $inmuebles): array
             "monto" => number_format($pagoMonto, 2, ".", ""),
             "estado" => $row["estado"] ?? "",
             "moneda" => $row["moneda"] ?? "",
+            "token" => $row["token"] ?? "",
+            "documento_url" => build_document_url($row),
+            "notificacion_url" => build_document_url($row),
+            "recibo_url" => build_recibo_url($row),
         ];
     }
 
@@ -174,4 +185,42 @@ function enrich_with_cxc(PDO $conn, array $inmuebles): array
     }
 
     return $result;
+}
+
+function base_host(): string
+{
+    $host = $_SERVER["HTTP_HOST"] ?? "rhodiumdev.com";
+    $scheme = (!empty($_SERVER["HTTPS"]) && $_SERVER["HTTPS"] !== "off") ? "https" : "http";
+    return $scheme . "://" . rtrim($host, "/");
+}
+
+function base_sys(): string
+{
+    return base_host() . "/condominio/sys";
+}
+
+function build_document_url(array $row): string
+{
+    $token = $row["token"] ?? "";
+    if ($token) {
+        return base_sys() . "/generar_notificacion.php?token=" . urlencode((string)$token);
+    }
+    $id = $row["id_notificacion"] ?? null;
+    if ($id) {
+        return base_sys() . "/generar_notificacion.php?id_notificacion=" . urlencode((string)$id);
+    }
+    return "";
+}
+
+function build_recibo_url(array $row): string
+{
+    $tokenRecibo = $row["token_recibo"] ?? "";
+    if ($tokenRecibo) {
+        return base_sys() . "/generar_recibo.php?token=" . urlencode((string)$tokenRecibo);
+    }
+    $id = $row["id_notificacion"] ?? null;
+    if ($id) {
+        return base_sys() . "/generar_recibo.php?id_notificacion=" . urlencode((string)$id);
+    }
+    return "";
 }

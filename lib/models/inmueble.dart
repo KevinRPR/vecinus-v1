@@ -18,6 +18,7 @@ class Inmueble {
   final String? calle;
   final String? avenida;
   final String? tipo;
+  final String? nombreCondominio;
   final String? proximaFechaPago;
   final String? deudaActual;
   final List<Pago> pagos;
@@ -38,6 +39,7 @@ class Inmueble {
     this.calle,
     this.avenida,
     this.tipo,
+    this.nombreCondominio,
     this.proximaFechaPago,
     this.deudaActual,
     List<Pago>? pagos,
@@ -60,6 +62,9 @@ class Inmueble {
       calle: json['calle'],
       avenida: json['avenida'],
       tipo: json['tipo'],
+      nombreCondominio: json['condominio_nombre']?.toString() ??
+          json['nombre_condominio']?.toString() ??
+          json['condominio']?.toString(),
       proximaFechaPago: json['proxima_fecha_pago']?.toString(),
       deudaActual: json['deuda_actual']?.toString(),
       pagos: _parsePagos(json['pagos']),

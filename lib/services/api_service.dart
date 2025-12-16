@@ -6,6 +6,8 @@ import '../models/user.dart';
 
 class ApiService {
   static const String baseUrl = 'https://rhodiumdev.com/condominio/movil/';
+  static String get baseRoot =>
+      baseUrl.replaceFirst(RegExp(r'movil/?$'), '');
 
   static Uri _uri(String path) => Uri.parse('$baseUrl$path');
 
