@@ -99,6 +99,7 @@ function enrich_with_cxc(PDO $conn, array $inmuebles): array
             nc.id_notificacion,
             nc.id_inmueble,
             nc.fecha_emision,
+            nc.fecha_vencimiento,
             nc.descripcion,
             nc.monto_total,
             nc.monto_pagado,
@@ -138,14 +139,16 @@ function enrich_with_cxc(PDO $conn, array $inmuebles): array
         $montoTotal = (float)($row["monto_total"] ?? 0);
         $montoPagado = (float)($row["monto_pagado"] ?? 0);
         $pendiente = max($montoTotal - $montoPagado, 0);
-        $fecha = $row["fecha_emision"] ?? null;
+        $fechaEmision = $row["fecha_emision"] ?? null;
+        $fechaVencimiento = $row["fecha_vencimiento"] ?? null;
+        $fechaReferencia = $fechaVencimiento ?: $fechaEmision;
 
         if ($estado !== "pagada") {
             $map[$id]["deuda_actual"] += $pendiente;
-            if ($fecha) {
+            if ($fechaReferencia) {
                 $actual = $map[$id]["proxima_fecha_pago"];
-                if ($actual === null || strtotime($fecha) < strtotime($actual)) {
-                    $map[$id]["proxima_fecha_pago"] = $fecha;
+                if ($actual === null || strtotime($fechaReferencia) < strtotime($actual)) {
+                    $map[$id]["proxima_fecha_pago"] = $fechaReferencia;
                 }
             }
         }
@@ -157,7 +160,9 @@ function enrich_with_cxc(PDO $conn, array $inmuebles): array
         $map[$id]["pagos"][] = [
             "id_pago" => $row["id_notificacion"] ?? null,
             "descripcion" => $row["descripcion"] ?? "Notificacion",
-            "fecha" => $fecha ?? "",
+            "fecha" => $fechaEmision ?? "",
+            "fecha_emision" => $fechaEmision ?? "",
+            "fecha_vencimiento" => $fechaVencimiento ?? "",
             "monto" => number_format($pagoMonto, 2, ".", ""),
             "estado" => $row["estado"] ?? "",
             "moneda" => $row["moneda"] ?? "",

@@ -2,6 +2,8 @@ class Pago {
   final String id;
   final String? descripcion;
   final String? fecha;
+  final String? fechaVencimiento;
+  final String? fechaEmision;
   final String? monto;
   final String? estado;
   final String? documentoUrl;
@@ -13,6 +15,8 @@ class Pago {
     required this.id,
     this.descripcion,
     this.fecha,
+    this.fechaVencimiento,
+    this.fechaEmision,
     this.monto,
     this.estado,
     this.documentoUrl,
@@ -36,6 +40,8 @@ class Pago {
       id: (json['id_pago'] ?? json['id'] ?? '').toString(),
       descripcion: json['descripcion']?.toString(),
       fecha: json['fecha']?.toString(),
+      fechaVencimiento: json['fecha_vencimiento']?.toString(),
+      fechaEmision: json['fecha_emision']?.toString(),
       monto: json['monto']?.toString(),
       estado: json['estado']?.toString(),
       documentoUrl: _pick(['documento_url', 'documento', 'document_url']),

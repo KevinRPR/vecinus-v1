@@ -18,17 +18,20 @@ class MainShell extends StatefulWidget {
   State<MainShell> createState() => _MainShellState();
 }
 
-class _MainShellState extends State<MainShell> {
+class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
   int _currentIndex = 0;
   late User _currentUser;
   late final PageController _pageController;
   List<Inmueble> _inmuebles = [];
   bool _loadingData = true;
+  DateTime? _lastFetch;
   static const double _floatingNavHeight = 90;
+  static const Duration _staleAfter = Duration(seconds: 30);
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _currentUser = widget.user;
     _pageController = PageController();
     _loadInmuebles();
@@ -36,8 +39,16 @@ class _MainShellState extends State<MainShell> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _pageController.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _maybeRefreshData();
+    }
   }
 
   Future<void> _loadInmuebles() async {
@@ -48,6 +59,7 @@ class _MainShellState extends State<MainShell> {
       setState(() {
         _inmuebles = data;
         _loadingData = false;
+        _lastFetch = DateTime.now();
       });
     } catch (e) {
       if (!mounted) return;
@@ -58,11 +70,22 @@ class _MainShellState extends State<MainShell> {
     }
   }
 
+  void _maybeRefreshData() {
+    final now = DateTime.now();
+    if (_lastFetch == null ||
+        (!_loadingData && now.difference(_lastFetch!) > _staleAfter)) {
+      _loadInmuebles();
+    }
+  }
+
   void _handleUserUpdated(User user) {
     setState(() => _currentUser = user);
   }
 
   void _onTabSelected(int index) {
+    if (index == 0 || index == 1) {
+      _maybeRefreshData();
+    }
     setState(() => _currentIndex = index);
     _pageController.animateToPage(
       index,
@@ -87,6 +110,7 @@ class _MainShellState extends State<MainShell> {
         inmuebles: _inmuebles,
         loading: _loadingData,
         onRefresh: _loadInmuebles,
+        token: widget.token,
       ),
       NotificationsScreen(token: widget.token),
       UserScreen(

@@ -109,6 +109,54 @@ class ApiService {
     throw Exception(data['error'] ?? 'No se pudo subir la imagen');
   }
 
+  // PAGOS - REPORTE
+  static Future<Map<String, dynamic>> preparePagoReporte({
+    required String token,
+    required String inmuebleId,
+  }) async {
+    final response = await http.post(
+      _uri('reportar_pago.php'),
+      headers: _headers,
+      body: jsonEncode({
+        'accion': 'preparar',
+        'token': token,
+        'id_inmueble': inmuebleId,
+      }),
+    );
+    final data = jsonDecode(response.body);
+    if (response.statusCode == 200 && data['success'] == true) {
+      return data;
+    }
+    throw Exception(data['error'] ?? 'No se pudo preparar el reporte de pago');
+  }
+
+  static Future<void> enviarPagoReporte({
+    required String token,
+    required String inmuebleId,
+    required String fechaPago,
+    String? observacion,
+    required List<Map<String, dynamic>> notificaciones,
+    required List<Map<String, dynamic>> pagos,
+  }) async {
+    final response = await http.post(
+      _uri('reportar_pago.php'),
+      headers: _headers,
+      body: jsonEncode({
+        'accion': 'enviar',
+        'token': token,
+        'id_inmueble': inmuebleId,
+        'fecha_pago': fechaPago,
+        'observacion': observacion ?? '',
+        'notificaciones': notificaciones,
+        'pagos': pagos,
+      }),
+    );
+    final data = jsonDecode(response.body);
+    if (!(response.statusCode == 200 && data['success'] == true)) {
+      throw Exception(data['error'] ?? 'No se pudo reportar el pago');
+    }
+  }
+
   static Future<dynamic> _postProfile(
     Map<String, dynamic> payload, {
     bool expectUser = true,

@@ -27,18 +27,19 @@ class DashboardScreen extends StatelessWidget {
         0,
         (sum, item) =>
             sum +
-            (double.tryParse(
-                  (item.deudaActual ?? '').replaceAll(',', '.'),
-                ) ??
-                0),
+            _parseMonto(item.deudaActual),
       );
-
-  int _countByStatus(EstadoInmueble status) =>
-      inmuebles.where((i) => i.estado == status).length;
 
   DateTime? _parseDate(String? raw) {
     if (raw == null || raw.trim().isEmpty) return null;
     return DateTime.tryParse(raw);
+  }
+
+  double _parseMonto(String? raw) {
+    if (raw == null) return 0;
+    final cleaned = raw.replaceAll(RegExp(r'[^0-9,.-]'), '');
+    if (cleaned.isEmpty) return 0;
+    return double.tryParse(cleaned.replaceAll(',', '.')) ?? 0;
   }
 
   Inmueble? get _proximoPago {
@@ -56,10 +57,8 @@ class DashboardScreen extends StatelessWidget {
   List<Inmueble> get _inmueblesCruciales {
     final list = List<Inmueble>.from(inmuebles);
     list.sort((a, b) {
-      final deudaA =
-          double.tryParse((a.deudaActual ?? '').replaceAll(',', '.')) ?? 0;
-      final deudaB =
-          double.tryParse((b.deudaActual ?? '').replaceAll(',', '.')) ?? 0;
+      final deudaA = _parseMonto(a.deudaActual);
+      final deudaB = _parseMonto(b.deudaActual);
       return deudaB.compareTo(deudaA);
     });
     return list.take(3).toList();
@@ -112,11 +111,6 @@ class DashboardScreen extends StatelessWidget {
                       beginOffset: const Offset(0, 0.06),
                       child: _heroCard(theme),
                     ),
-                    const SizedBox(height: 20),
-                    FadeSlideTransition(
-                      beginOffset: const Offset(0, 0.04),
-                      child: _statusRow(cardColor, shadowColor, textMuted),
-                    ),
                     const SizedBox(height: 24),
                     FadeSlideTransition(
                       beginOffset: const Offset(0, 0.04),
@@ -148,15 +142,9 @@ class DashboardScreen extends StatelessWidget {
           ShimmerSkeleton(height: 16, width: 220),
           SizedBox(height: 24),
           ShimmerSkeleton(height: 180, borderRadius: BorderRadius.all(Radius.circular(24))),
-          SizedBox(height: 20),
-          ShimmerSkeleton(height: 80, borderRadius: BorderRadius.all(Radius.circular(18))),
-          SizedBox(height: 12),
-          ShimmerSkeleton(height: 80, borderRadius: BorderRadius.all(Radius.circular(18))),
-          SizedBox(height: 12),
-          ShimmerSkeleton(height: 80, borderRadius: BorderRadius.all(Radius.circular(18))),
           SizedBox(height: 24),
           ShimmerSkeleton(height: 120, borderRadius: BorderRadius.all(Radius.circular(18))),
-          SizedBox(height: 12),
+          SizedBox(height: 16),
           ShimmerSkeleton(height: 120, borderRadius: BorderRadius.all(Radius.circular(18))),
         ],
       ),
@@ -249,47 +237,6 @@ class DashboardScreen extends StatelessWidget {
           ),
         ],
       ),
-    );
-  }
-
-  Widget _statusRow(Color cardColor, Color shadowColor, Color textMuted) {
-    final cards = [
-      _StatusInfo(
-        label: 'Al dia',
-        value: _countByStatus(EstadoInmueble.alDia),
-        color: const Color(0xff16a34a),
-        icon: Icons.task_alt,
-      ),
-      _StatusInfo(
-        label: 'Pendiente',
-        value: _countByStatus(EstadoInmueble.pendiente),
-        color: const Color(0xfff97316),
-        icon: Icons.access_time,
-      ),
-      _StatusInfo(
-        label: 'Moroso',
-        value: _countByStatus(EstadoInmueble.moroso),
-        color: const Color(0xffef4444),
-        icon: Icons.warning_amber_rounded,
-      ),
-    ];
-
-    return Row(
-      children: cards
-          .map(
-            (item) => Expanded(
-              child: FadeSlideTransition(
-                beginOffset: const Offset(0, 0.05),
-                child: _StatusCard(
-                  info: item,
-                  cardColor: cardColor,
-                  shadowColor: shadowColor,
-                  textMuted: textMuted,
-                ),
-              ),
-            ),
-          )
-          .toList(),
     );
   }
 
@@ -465,73 +412,5 @@ class DashboardScreen extends StatelessWidget {
 
   String _formatCurrency(double value) {
     return '\$${value.toStringAsFixed(2)}';
-  }
-}
-
-class _StatusInfo {
-  final String label;
-  final int value;
-  final Color color;
-  final IconData icon;
-
-  const _StatusInfo({
-    required this.label,
-    required this.value,
-    required this.color,
-    required this.icon,
-  });
-}
-
-class _StatusCard extends StatelessWidget {
-  final _StatusInfo info;
-  final Color cardColor;
-  final Color shadowColor;
-  final Color textMuted;
-
-  const _StatusCard({
-    required this.info,
-    required this.cardColor,
-    required this.shadowColor,
-    required this.textMuted,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 4),
-      padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
-      decoration: BoxDecoration(
-        color: cardColor,
-        borderRadius: BorderRadius.circular(18),
-        boxShadow: [
-          BoxShadow(
-            color: shadowColor,
-            blurRadius: 12,
-            offset: const Offset(0, 6),
-          ),
-        ],
-      ),
-      child: Column(
-        children: [
-          Icon(info.icon, color: info.color),
-          const SizedBox(height: 8),
-          Text(
-            '${info.value}',
-            style: const TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            info.label,
-            style: TextStyle(
-              fontSize: 13,
-              color: textMuted,
-            ),
-          ),
-        ],
-      ),
-    );
   }
 }

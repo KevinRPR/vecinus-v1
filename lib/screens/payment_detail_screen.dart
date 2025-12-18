@@ -4,15 +4,27 @@ import 'package:url_launcher/url_launcher.dart';
 import '../models/inmueble.dart';
 import '../models/pago.dart';
 import '../services/api_service.dart';
+import 'report_payment_screen.dart';
+
+enum _PagoState { pending, overdue, paid }
+
+class _PagoBadge {
+  final String label;
+  final Color color;
+
+  const _PagoBadge({required this.label, required this.color});
+}
 
 class PaymentDetailScreen extends StatelessWidget {
   final Inmueble inmueble;
   final double totalDeuda;
+  final String token;
 
   const PaymentDetailScreen({
     super.key,
     required this.inmueble,
     required this.totalDeuda,
+    required this.token,
   });
 
   @override
@@ -39,7 +51,7 @@ class PaymentDetailScreen extends StatelessWidget {
           ElevatedButton.icon(
             onPressed: () => _reportarPago(context),
             icon: const Icon(Icons.upload_file_rounded),
-            label: const Text('Reportar pago'),
+            label: const Text('Pagar'),
           ),
           const SizedBox(height: 24),
           Text(
@@ -47,7 +59,7 @@ class PaymentDetailScreen extends StatelessWidget {
             style: theme.textTheme.titleMedium,
           ),
           const SizedBox(height: 12),
-          if (inmueble.pagos.isEmpty)
+          if (_pagosActivos.isEmpty)
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
@@ -62,22 +74,65 @@ class PaymentDetailScreen extends StatelessWidget {
                 ],
               ),
               child: Text(
-                'No hay pagos registrados para este inmueble.',
+                'No hay deudas activas o vencidas para este inmueble.',
                 style: TextStyle(color: muted),
               ),
             )
           else
             Column(
-              children: inmueble.pagos
-                  .map(
-                    (pago) => _pagoTile(
-                      context,
-                      pago,
-                      cardColor,
-                      shadow,
-                      muted,
-                    ),
-                  )
+              children: _pagosActivos
+                  .map((pago) => _pagoTile(
+                        context,
+                        pago,
+                        cardColor,
+                        shadow,
+                        muted,
+                        _PagoBadge(
+                          label: _statusLabel(pago),
+                          color: _statusColor(pago),
+                        ),
+                      ))
+                  .toList(),
+            ),
+          const SizedBox(height: 20),
+          Text(
+            'Historial de pagadas',
+            style: theme.textTheme.titleMedium,
+          ),
+          const SizedBox(height: 12),
+          if (_pagosPagados.isEmpty)
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: cardColor,
+                borderRadius: BorderRadius.circular(14),
+                boxShadow: [
+                  BoxShadow(
+                    color: shadow,
+                    blurRadius: 10,
+                    offset: const Offset(0, 6),
+                  ),
+                ],
+              ),
+              child: Text(
+                'Aun no hay pagos registrados como pagados.',
+                style: TextStyle(color: muted),
+              ),
+            )
+          else
+            Column(
+              children: _pagosPagados
+                  .map((pago) => _pagoTile(
+                        context,
+                        pago,
+                        cardColor,
+                        shadow,
+                        muted,
+                        const _PagoBadge(
+                          label: 'Pagada',
+                          color: Color(0xff16a34a),
+                        ),
+                      ))
                   .toList(),
             ),
         ],
@@ -151,6 +206,7 @@ class PaymentDetailScreen extends StatelessWidget {
 
   Widget _deudaCard(Color cardColor, Color shadow, Color muted) {
     final double deuda = totalDeuda < 0 ? 0.0 : totalDeuda;
+    final bool sinDeuda = deuda <= 0;
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
@@ -167,9 +223,11 @@ class PaymentDetailScreen extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Para estar solvente solo debe pagar',
-            style: TextStyle(fontWeight: FontWeight.w600),
+          Text(
+            sinDeuda
+                ? 'Sin deuda pendiente'
+                : 'Saldo pendiente por pagar para estar solvente',
+            style: const TextStyle(fontWeight: FontWeight.w600),
           ),
           const SizedBox(height: 8),
           Text(
@@ -201,6 +259,7 @@ class PaymentDetailScreen extends StatelessWidget {
     Color cardColor,
     Color shadow,
     Color muted,
+    _PagoBadge badge,
   ) {
     return InkWell(
       onTap: () => _openDocument(context, pago),
@@ -241,22 +300,23 @@ class PaymentDetailScreen extends StatelessWidget {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    pago.fecha ?? '--',
+                    pago.fecha ?? pago.fechaEmision ?? pago.fechaVencimiento ?? '--',
                     style: TextStyle(color: muted, fontSize: 12),
                   ),
                   const SizedBox(height: 4),
                   Row(
                     children: [
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        padding:
+                            const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                         decoration: BoxDecoration(
-                          color: _estadoColor(pago.estado).withOpacity(0.12),
+                          color: badge.color.withOpacity(0.12),
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: Text(
-                          pago.estado ?? 'Estado',
+                          badge.label,
                           style: TextStyle(
-                            color: _estadoColor(pago.estado),
+                            color: badge.color,
                             fontSize: 12,
                             fontWeight: FontWeight.w600,
                           ),
@@ -268,7 +328,7 @@ class PaymentDetailScreen extends StatelessWidget {
                           'Ver documento',
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
-                            color: _estadoColor(pago.estado),
+                            color: badge.color,
                             fontWeight: FontWeight.w600,
                           ),
                         ),
@@ -292,9 +352,12 @@ class PaymentDetailScreen extends StatelessWidget {
   }
 
   void _reportarPago(BuildContext context) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Reportar pago aun no esta disponible.'),
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => ReportPaymentScreen(
+          token: token,
+          inmueble: inmueble,
+        ),
       ),
     );
   }
@@ -309,12 +372,61 @@ class PaymentDetailScreen extends StatelessWidget {
 
   String _formatCurrency(double value) => '\$${value.toStringAsFixed(2)}';
 
-  Color _estadoColor(String? estado) {
-    final value = (estado ?? '').toLowerCase();
-    if (value.contains('pend')) return const Color(0xfff59e0b);
-    if (value.contains('parcial')) return const Color(0xff2563eb);
-    if (value.contains('pag')) return const Color(0xff16a34a);
-    return Colors.blueGrey;
+  List<Pago> get _pagosActivos =>
+      inmueble.pagos.where((p) => _classifyPago(p) != _PagoState.paid).toList();
+
+  List<Pago> get _pagosPagados =>
+      inmueble.pagos.where((p) => _classifyPago(p) == _PagoState.paid).toList();
+
+  _PagoState _classifyPago(Pago pago) {
+    final estado = (pago.estado ?? '').toLowerCase();
+    if (estado.contains('pag')) return _PagoState.paid;
+
+    DateTime? fechaVenc = DateTime.tryParse(
+      pago.fechaVencimiento ?? pago.fecha ?? pago.fechaEmision ?? '',
+    );
+    if (fechaVenc != null) {
+      final due = DateTime(fechaVenc.year, fechaVenc.month, fechaVenc.day);
+      if (due.isBefore(_today())) {
+        return _PagoState.overdue;
+      }
+      return _PagoState.pending;
+    }
+
+    if (estado.contains('venc') || estado.contains('atras') || estado.contains('moro')) {
+      return _PagoState.overdue;
+    }
+    if (estado.contains('pend')) return _PagoState.pending;
+    return _PagoState.pending;
+  }
+
+  String _statusLabel(Pago pago) {
+    final state = _classifyPago(pago);
+    switch (state) {
+      case _PagoState.overdue:
+        return 'Atrasado';
+      case _PagoState.pending:
+        return 'Pendiente';
+      case _PagoState.paid:
+        return 'Pagada';
+    }
+  }
+
+  Color _statusColor(Pago pago) {
+    final state = _classifyPago(pago);
+    switch (state) {
+      case _PagoState.overdue:
+        return const Color(0xffef4444);
+      case _PagoState.pending:
+        return const Color(0xfff59e0b);
+      case _PagoState.paid:
+        return const Color(0xff16a34a);
+    }
+  }
+
+  DateTime _today() {
+    final now = DateTime.now();
+    return DateTime(now.year, now.month, now.day);
   }
 
   Future<void> _openDocument(BuildContext context, Pago pago) async {

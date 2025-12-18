@@ -9,12 +9,14 @@ class PaymentsScreen extends StatelessWidget {
   final List<Inmueble> inmuebles;
   final bool loading;
   final Future<void> Function() onRefresh;
+  final String token;
 
   const PaymentsScreen({
     super.key,
     required this.inmuebles,
     required this.loading,
     required this.onRefresh,
+    required this.token,
   });
 
   double get totalDeuda => inmuebles.fold(
@@ -216,6 +218,11 @@ class PaymentsScreen extends StatelessWidget {
     final deuda =
         double.tryParse((inmueble.deudaActual ?? '').replaceAll(',', '.')) ?? 0;
     final sinDeuda = deuda <= 0;
+    final derivedEstado = sinDeuda
+        ? EstadoInmueble.alDia
+        : (inmueble.estado == EstadoInmueble.alDia
+            ? EstadoInmueble.moroso
+            : inmueble.estado);
     final tileColor = sinDeuda
         ? (isDark ? const Color(0xff0f2d1a) : const Color(0xffecfdf3))
         : cardColor;
@@ -276,7 +283,7 @@ class PaymentsScreen extends StatelessWidget {
                   ],
                 ),
               ),
-              _badgeEstado(inmueble.estado),
+              _badgeEstado(derivedEstado),
             ],
           ),
           const SizedBox(height: 12),
@@ -390,6 +397,7 @@ class PaymentsScreen extends StatelessWidget {
       MaterialPageRoute(
         builder: (_) => PaymentDetailScreen(
           inmueble: inmueble,
+          token: token,
           totalDeuda: double.tryParse(
                 (inmueble.deudaActual ?? '').replaceAll(',', '.'),
               ) ??
