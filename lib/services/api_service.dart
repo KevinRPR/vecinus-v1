@@ -1,8 +1,10 @@
 import 'dart:convert';
+import 'dart:math';
 import 'package:http/http.dart' as http;
 
 import '../models/inmueble.dart';
 import '../models/user.dart';
+import '../models/payment_report.dart';
 
 class ApiService {
   static const String baseUrl = 'https://rhodiumdev.com/condominio/movil/';
@@ -13,6 +15,12 @@ class ApiService {
 
   static Map<String, String> get _headers =>
       const {'Content-Type': 'application/json'};
+
+  static String generateClientUuid() {
+    final Random rnd = Random.secure();
+    String four() => rnd.nextInt(0xffff + 1).toRadixString(16).padLeft(4, '0');
+    return '${four()}${four()}-${four()}-${four()}-${four()}-${four()}${four()}${four()}';
+  }
 
   // LOGIN
   static Future<Map<String, dynamic>> login(
@@ -130,14 +138,21 @@ class ApiService {
     throw Exception(data['error'] ?? 'No se pudo preparar el reporte de pago');
   }
 
-  static Future<void> enviarPagoReporte({
+  static Future<Map<String, dynamic>> enviarPagoReporte({
     required String token,
     required String inmuebleId,
     required String fechaPago,
     String? observacion,
     required List<Map<String, dynamic>> notificaciones,
     required List<Map<String, dynamic>> pagos,
+    String? clientUuid,
+    String? comprobanteBase64,
+    String? comprobanteExt,
   }) async {
+    final uuid = (clientUuid != null && clientUuid.trim().isNotEmpty)
+        ? clientUuid.trim()
+        : generateClientUuid();
+
     final response = await http.post(
       _uri('reportar_pago.php'),
       headers: _headers,
@@ -149,12 +164,40 @@ class ApiService {
         'observacion': observacion ?? '',
         'notificaciones': notificaciones,
         'pagos': pagos,
+        'client_uuid': uuid,
+        if (comprobanteBase64 != null) 'comprobante_base64': comprobanteBase64,
+        if (comprobanteExt != null) 'comprobante_ext': comprobanteExt,
       }),
     );
     final data = jsonDecode(response.body);
-    if (!(response.statusCode == 200 && data['success'] == true)) {
-      throw Exception(data['error'] ?? 'No se pudo reportar el pago');
+    if (response.statusCode == 200 && data['success'] == true) {
+      return data;
     }
+    throw Exception(data['error'] ?? 'No se pudo reportar el pago');
+  }
+
+  static Future<List<PaymentReport>> getMisPagosReportados({
+    required String token,
+    String? idInmueble,
+  }) async {
+    final payload = <String, dynamic>{
+      'token': token,
+      if (idInmueble != null) 'id_inmueble': idInmueble,
+    };
+    final response = await http.post(
+      _uri('mis_pagos_reportados.php'),
+      headers: _headers,
+      body: jsonEncode(payload),
+    );
+    final data = jsonDecode(response.body);
+    if (response.statusCode == 200 && data['success'] == true) {
+      final List lista = data['reportes'] ?? [];
+      return lista
+          .whereType<Map<String, dynamic>>()
+          .map(PaymentReport.fromJson)
+          .toList();
+    }
+    throw Exception(data['error'] ?? 'No se pudo consultar los pagos reportados');
   }
 
   static Future<dynamic> _postProfile(

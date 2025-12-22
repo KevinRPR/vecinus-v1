@@ -1,4 +1,8 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../models/inmueble.dart';
 import '../services/api_service.dart';
@@ -26,16 +30,35 @@ class _ReportPaymentScreenState extends State<ReportPaymentScreen> {
   Map<String, dynamic>? _data;
   int? _selectedAccount;
   _ReportStep _step = _ReportStep.selectBank;
+  late final String _clientUuid;
 
   final TextEditingController _obsCtrl = TextEditingController();
   final TextEditingController _refCtrl = TextEditingController();
   final TextEditingController _montoCtrl = TextEditingController();
+  final TextEditingController _montoUsdCtrl = TextEditingController();
+  final TextEditingController _montoVesCtrl = TextEditingController();
   DateTime _fechaPago = DateTime.now();
+
+  final _picker = ImagePicker();
+  String? _evidenceBase64;
+  String? _evidenceExt;
+  int? _monedaBase;
 
   @override
   void initState() {
     super.initState();
+    _clientUuid = ApiService.generateClientUuid();
     _load();
+  }
+
+  @override
+  void dispose() {
+    _obsCtrl.dispose();
+    _refCtrl.dispose();
+    _montoCtrl.dispose();
+    _montoUsdCtrl.dispose();
+    _montoVesCtrl.dispose();
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -50,6 +73,9 @@ class _ReportPaymentScreenState extends State<ReportPaymentScreen> {
       );
       setState(() {
         _data = res;
+        _monedaBase = res['moneda_base'] is int
+            ? res['moneda_base'] as int
+            : int.tryParse(res['moneda_base']?.toString() ?? '');
         _loading = false;
       });
     } catch (e) {
@@ -66,6 +92,15 @@ class _ReportPaymentScreenState extends State<ReportPaymentScreen> {
   List<Map<String, dynamic>> get _pendientes =>
       (_data?['pendientes'] as List?)?.cast<Map<String, dynamic>>() ?? [];
 
+  double get _totalPendienteBase {
+    double total = 0;
+    for (final p in _pendientes) {
+      final tasa = (p['tasa'] as num?)?.toDouble() ?? 1;
+      total += ((p['monto_x_pagar'] as num?)?.toDouble() ?? 0) * tasa;
+    }
+    return total;
+  }
+
   Map<String, dynamic>? get _selectedAccountData {
     if (_selectedAccount == null) return null;
     return _cuentas.firstWhere(
@@ -74,21 +109,47 @@ class _ReportPaymentScreenState extends State<ReportPaymentScreen> {
     );
   }
 
-  double get _totalBase => _pendientes.fold(
-        0.0,
-        (sum, p) => sum + (p['monto_x_pagar'] as num) * (p['tasa'] as num),
-      );
+  bool get _cuentaEsVes {
+    final cuenta = _selectedAccountData;
+    if (cuenta == null) return false;
+    final moneda = (cuenta['moneda'] ?? '').toString().toUpperCase();
+    return moneda.contains('VES') || moneda.contains('BS');
+  }
+
+  double get _tasaCuenta =>
+      (_selectedAccountData?['tasa'] as num?)?.toDouble() ?? 1.0;
+
+  void _syncUsdFromVes() {
+    final ves = double.tryParse(_montoVesCtrl.text.replaceAll(',', '.')) ?? 0;
+    if (_tasaCuenta > 0) {
+      final usd = ves / _tasaCuenta;
+      _montoUsdCtrl.text = usd.isFinite ? usd.toStringAsFixed(2) : '';
+      _montoCtrl.text = _montoVesCtrl.text;
+    }
+  }
+
+  void _syncVesFromUsd() {
+    final usd = double.tryParse(_montoUsdCtrl.text.replaceAll(',', '.')) ?? 0;
+    final ves = usd * _tasaCuenta;
+    _montoVesCtrl.text = ves.isFinite ? ves.toStringAsFixed(2) : '';
+    _montoCtrl.text = _montoVesCtrl.text;
+  }
+
+  double get _totalBase {
+    final monto = double.tryParse(_montoCtrl.text.replaceAll(',', '.')) ?? 0;
+    return monto * (_tasaCuenta > 0 ? _tasaCuenta : 1);
+  }
 
   void _goToDetails(int idCuenta) {
     setState(() {
       _selectedAccount = idCuenta;
       _step = _ReportStep.bankDetails;
-      final cuenta = _selectedAccountData;
-      if (cuenta != null) {
-        final sugerido =
-            _totalBase / ((cuenta['tasa'] as num?)?.toDouble() ?? 1.0);
-        _montoCtrl.text =
-            sugerido.isFinite ? sugerido.toStringAsFixed(2) : '';
+      if (_cuentaEsVes) {
+        _montoUsdCtrl.text = '';
+        _montoVesCtrl.text = '';
+        _montoCtrl.text = '';
+      } else {
+        _montoCtrl.text = '';
       }
     });
   }
@@ -116,6 +177,22 @@ class _ReportPaymentScreenState extends State<ReportPaymentScreen> {
     if (picked != null) {
       setState(() => _fechaPago = picked);
     }
+  }
+
+  Future<void> _pickEvidence() async {
+    final file = await _picker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 80,
+      maxWidth: 1280,
+    );
+    if (file == null) return;
+    final bytes = await file.readAsBytes();
+    final encoded = base64Encode(bytes);
+    final ext = file.path.split('.').last.toLowerCase();
+    setState(() {
+      _evidenceBase64 = 'data:image/$ext;base64,$encoded';
+      _evidenceExt = ext;
+    });
   }
 
   Future<void> _submit() async {
@@ -148,6 +225,7 @@ class _ReportPaymentScreenState extends State<ReportPaymentScreen> {
               'id_moneda': p['id_moneda'],
             })
         .toList();
+
     final pagos = [
       {
         'id_moneda': cuenta['id_moneda'],
@@ -160,15 +238,23 @@ class _ReportPaymentScreenState extends State<ReportPaymentScreen> {
 
     setState(() => _loading = true);
     try {
-      await ApiService.enviarPagoReporte(
+      final res = await ApiService.enviarPagoReporte(
         token: widget.token,
         inmuebleId: widget.inmueble.idInmueble,
         fechaPago: _fechaPago.toIso8601String().split('T').first,
         observacion: _obsCtrl.text.trim(),
         notificaciones: notificaciones.cast<Map<String, dynamic>>(),
         pagos: pagos.cast<Map<String, dynamic>>(),
+        clientUuid: _clientUuid,
+        comprobanteBase64: _evidenceBase64,
+        comprobanteExt: _evidenceExt,
       );
       if (!mounted) return;
+      if (res['duplicado'] == true) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Este pago ya fue reportado.')),
+        );
+      }
       _goToSuccess();
     } catch (e) {
       if (!mounted) return;
@@ -237,6 +323,12 @@ class _ReportPaymentScreenState extends State<ReportPaymentScreen> {
           cuenta: cuenta,
           inmueble: widget.inmueble,
           totalBase: _totalBase,
+          totalPendienteBase: _totalPendienteBase,
+          cuentaEsVes: _cuentaEsVes,
+          montoUsdCtrl: _montoUsdCtrl,
+          montoVesCtrl: _montoVesCtrl,
+          onUsdChanged: _syncVesFromUsd,
+          onVesChanged: _syncUsdFromVes,
           onContinue: _goToForm,
           onBack: () => setState(() => _step = _ReportStep.selectBank),
         );
@@ -249,16 +341,22 @@ class _ReportPaymentScreenState extends State<ReportPaymentScreen> {
           obsCtrl: _obsCtrl,
           refCtrl: _refCtrl,
           montoCtrl: _montoCtrl,
+          montoUsdCtrl: _montoUsdCtrl,
+          montoVesCtrl: _montoVesCtrl,
+          cuentaEsVes: _cuentaEsVes,
+          onUsdChanged: _syncVesFromUsd,
+          onVesChanged: _syncUsdFromVes,
+          totalPendienteBase: _totalPendienteBase,
           onPickDate: _pickDate,
           onSubmit: _submit,
           onBack: () => setState(() => _step = _ReportStep.bankDetails),
+          onPickEvidence: _pickEvidence,
+          evidenceLabel: _evidenceBase64 != null ? 'Comprobante adjuntado' : 'Adjuntar comprobante',
         );
       case _ReportStep.success:
         return _SuccessStep(onClose: () => Navigator.of(context).pop(true));
     }
   }
-
-  String _format(num n) => '\$${n.toStringAsFixed(2)}';
 }
 
 class _SelectBankStep extends StatelessWidget {
@@ -278,7 +376,7 @@ class _SelectBankStep extends StatelessWidget {
       children: [
         Text(
           'Por cual banco desea pagar?',
-          style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+          style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700, fontSize: 18),
         ),
         const SizedBox(height: 12),
         if (cuentas.isEmpty)
@@ -298,12 +396,12 @@ class _SelectBankStep extends StatelessWidget {
                   children: [
                     Text(
                       c['banco'] ?? c['nombre'] ?? 'Banco',
-                      style: const TextStyle(fontWeight: FontWeight.w700),
+                      style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 18),
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      '${c['codigo_banco'] ?? ''} • ${c['moneda'] ?? ''}',
-                      style: TextStyle(color: Colors.grey.shade700),
+                      '${c['codigo_banco'] ?? ''} ${c['moneda'] ?? ''}',
+                      style: TextStyle(color: Colors.grey.shade700, fontSize: 14),
                     ),
                   ],
                 ),
@@ -319,6 +417,12 @@ class _BankDetailStep extends StatelessWidget {
   final Map<String, dynamic>? cuenta;
   final Inmueble inmueble;
   final double totalBase;
+  final double totalPendienteBase;
+  final bool cuentaEsVes;
+  final TextEditingController montoUsdCtrl;
+  final TextEditingController montoVesCtrl;
+  final VoidCallback onUsdChanged;
+  final VoidCallback onVesChanged;
   final VoidCallback onContinue;
   final VoidCallback onBack;
 
@@ -326,9 +430,21 @@ class _BankDetailStep extends StatelessWidget {
     required this.cuenta,
     required this.inmueble,
     required this.totalBase,
+    required this.totalPendienteBase,
+    required this.cuentaEsVes,
+    required this.montoUsdCtrl,
+    required this.montoVesCtrl,
+    required this.onUsdChanged,
+    required this.onVesChanged,
     required this.onContinue,
     required this.onBack,
   });
+
+  void _copy(BuildContext context, String value) {
+    Clipboard.setData(ClipboardData(text: value));
+    ScaffoldMessenger.of(context)
+        .showSnackBar(const SnackBar(content: Text('Copiado al portapapeles')));
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -346,6 +462,14 @@ class _BankDetailStep extends StatelessWidget {
       );
     }
 
+    final rows = [
+      ['Banco', '${cuenta!['codigo_banco'] ?? ''} ${cuenta!['banco'] ?? ''}'],
+      ['Cuenta', cuenta!['numero_cuenta_cliente'] ?? '--'],
+      ['Titular', cuenta!['titular'] ?? '--'],
+      ['CI/RIF', cuenta!['rif'] ?? '--'],
+      ['Telefono', cuenta!['celular'] ?? '--'],
+    ];
+
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
@@ -357,18 +481,57 @@ class _BankDetailStep extends StatelessWidget {
             ),
             Text(
               'Datos bancarios',
-              style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+              style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700, fontSize: 18),
             ),
           ],
         ),
         const SizedBox(height: 12),
-        _InfoRow(label: 'Banco', value: '${cuenta!['codigo_banco'] ?? ''} ${cuenta!['banco'] ?? ''}'),
-        _InfoRow(label: 'Cuenta', value: cuenta!['numero_cuenta_cliente'] ?? '--'),
-        _InfoRow(label: 'Titular', value: cuenta!['titular'] ?? '--'),
-        _InfoRow(label: 'CI/RIF', value: cuenta!['rif'] ?? '--'),
-        _InfoRow(label: 'Telefono', value: cuenta!['celular'] ?? '--'),
+        ...rows.map(
+          (r) => _InfoRow(
+            label: r[0],
+            value: r[1],
+            onCopy: () => _copy(context, r[1]),
+          ),
+        ),
         const SizedBox(height: 16),
-        _InfoRow(label: 'Total a pagar (base)', value: '\$${totalBase.toStringAsFixed(2)}'),
+        _InfoRow(
+          label: 'Deuda total (base)',
+          value: '\$${totalPendienteBase.toStringAsFixed(2)}',
+        ),
+        _InfoRow(
+          label: 'Equivalente',
+          value:
+              '${(totalPendienteBase * ((cuenta!['tasa'] as num?)?.toDouble() ?? 1)).toStringAsFixed(2)} ${cuenta!['moneda'] ?? ''}',
+        ),
+        const SizedBox(height: 12),
+        if (cuentaEsVes) ...[
+          const Text(
+            'Calculadora de divisas',
+            style: TextStyle(fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: montoUsdCtrl,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: const InputDecoration(
+              labelText: 'Monto en USD',
+              suffixText: 'USD',
+            ),
+            onChanged: (_) => onUsdChanged(),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: montoVesCtrl,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: InputDecoration(
+              labelText: 'Monto en VES',
+              suffixText: cuenta?['moneda'] ?? 'VES',
+              helperText: 'Tasa: ${(cuenta?['tasa'] as num?)?.toDouble() ?? 1} ${cuenta?['moneda'] ?? 'VES'} por USD',
+            ),
+            onChanged: (_) => onVesChanged(),
+          ),
+          const SizedBox(height: 16),
+        ],
         const SizedBox(height: 24),
         ElevatedButton(
           onPressed: onContinue,
@@ -386,9 +549,17 @@ class _PaymentFormStep extends StatelessWidget {
   final TextEditingController obsCtrl;
   final TextEditingController refCtrl;
   final TextEditingController montoCtrl;
+  final TextEditingController montoUsdCtrl;
+  final TextEditingController montoVesCtrl;
+  final bool cuentaEsVes;
+  final VoidCallback onUsdChanged;
+  final VoidCallback onVesChanged;
+  final double totalPendienteBase;
   final VoidCallback onPickDate;
   final VoidCallback onSubmit;
   final VoidCallback onBack;
+  final VoidCallback onPickEvidence;
+  final String? evidenceLabel;
 
   const _PaymentFormStep({
     required this.cuenta,
@@ -397,9 +568,17 @@ class _PaymentFormStep extends StatelessWidget {
     required this.obsCtrl,
     required this.refCtrl,
     required this.montoCtrl,
+    required this.montoUsdCtrl,
+    required this.montoVesCtrl,
+    required this.cuentaEsVes,
+    required this.onUsdChanged,
+    required this.onVesChanged,
+    required this.totalPendienteBase,
     required this.onPickDate,
     required this.onSubmit,
     required this.onBack,
+    required this.onPickEvidence,
+    required this.evidenceLabel,
   });
 
   @override
@@ -416,17 +595,52 @@ class _PaymentFormStep extends StatelessWidget {
             ),
             Text(
               'Registrar pago',
-              style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+              style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700, fontSize: 18),
             ),
           ],
         ),
         const SizedBox(height: 12),
+        Card(
+          margin: const EdgeInsets.only(bottom: 12),
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Deuda total',
+                  style: TextStyle(fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  '\$${totalPendienteBase.toStringAsFixed(2)}',
+                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+                ),
+                if (cuenta != null && cuenta!['tasa'] != null) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    'Equivalente: ${(totalPendienteBase * ((cuenta!['tasa'] as num?)?.toDouble() ?? 1)).toStringAsFixed(2)} ${cuenta!['moneda'] ?? ''}',
+                    style: const TextStyle(color: Colors.grey),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
         if (pendientes.isNotEmpty)
           ...pendientes.map(
-            (p) => ListTile(
-              dense: true,
-              title: Text(p['descripcion'] ?? 'Notificacion'),
-              subtitle: Text('${p['codigo_moneda']} ${p['monto_x_pagar']}'),
+            (p) => Card(
+              margin: const EdgeInsets.only(bottom: 10),
+              child: ListTile(
+                title: Text(
+                  p['descripcion'] ?? 'Notificacion',
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                ),
+                subtitle: Text(
+                  '${p['codigo_moneda']} pendiente: ${p['monto_x_pagar']}',
+                  style: const TextStyle(color: Colors.grey),
+                ),
+              ),
             ),
           ),
         TextField(
@@ -436,13 +650,35 @@ class _PaymentFormStep extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 12),
-        TextField(
-          controller: montoCtrl,
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          decoration: InputDecoration(
-            labelText: 'Monto pagado${cuenta != null ? ' (${cuenta!['moneda']})' : ''}',
+        if (cuentaEsVes) ...[
+          TextField(
+            controller: montoUsdCtrl,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: const InputDecoration(
+              labelText: 'Monto en USD',
+              suffixText: 'USD',
+            ),
+            onChanged: (_) => onUsdChanged(),
           ),
-        ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: montoVesCtrl,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: InputDecoration(
+              labelText: 'Monto en VES',
+              suffixText: cuenta?['moneda'] ?? 'VES',
+              helperText: 'Tasa: ${(cuenta?['tasa'] as num?)?.toDouble() ?? 1} ${cuenta?['moneda'] ?? 'VES'} por USD',
+            ),
+            onChanged: (_) => onVesChanged(),
+          ),
+        ] else
+          TextField(
+            controller: montoCtrl,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: InputDecoration(
+              labelText: 'Monto pagado${cuenta != null ? ' (${cuenta!['moneda']})' : ''}',
+            ),
+          ),
         const SizedBox(height: 12),
         TextField(
           readOnly: true,
@@ -461,6 +697,12 @@ class _PaymentFormStep extends StatelessWidget {
           decoration: const InputDecoration(
             labelText: 'Observaciones (opcional)',
           ),
+        ),
+        const SizedBox(height: 12),
+        OutlinedButton.icon(
+          onPressed: onPickEvidence,
+          icon: const Icon(Icons.attach_file),
+          label: Text(evidenceLabel ?? 'Adjuntar comprobante'),
         ),
         const SizedBox(height: 24),
         ElevatedButton(
@@ -505,22 +747,47 @@ class _SuccessStep extends StatelessWidget {
 class _InfoRow extends StatelessWidget {
   final String label;
   final String value;
-  const _InfoRow({required this.label, required this.value});
+  final VoidCallback? onCopy;
+  const _InfoRow({required this.label, required this.value, this.onCopy});
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
+      padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label, style: const TextStyle(color: Colors.grey)),
+          Text(
+            label,
+            style: const TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+              color: Color(0xff475467),
+            ),
+          ),
           const SizedBox(width: 12),
           Flexible(
-            child: Text(
-              value,
-              textAlign: TextAlign.end,
-              style: const TextStyle(fontWeight: FontWeight.w600),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                Flexible(
+                  child: Text(
+                    value,
+                    textAlign: TextAlign.end,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 16,
+                    ),
+                  ),
+                ),
+                if (onCopy != null) ...[
+                  const SizedBox(width: 6),
+                  IconButton(
+                    icon: const Icon(Icons.copy, size: 18),
+                    onPressed: onCopy,
+                  ),
+                ],
+              ],
             ),
           ),
         ],

@@ -7,7 +7,7 @@ header("Access-Control-Allow-Headers: Content-Type, Authorization");
 require_once(__DIR__ . "/config/conexion.php");
 require_once(__DIR__ . "/helpers.php");
 
-function assert_required(array $data, array $keys)
+function assert_required(array $data, array $keys): void
 {
     foreach ($keys as $k) {
         if (!isset($data[$k]) || (is_string($data[$k]) && trim($data[$k]) === "")) {
@@ -157,6 +157,76 @@ function ensure_tables(PDO $conn): void
     ");
 }
 
+function ensure_columns(PDO $conn): void
+{
+    $conn->exec("
+        ALTER TABLE pago_reportado_app
+            ADD COLUMN IF NOT EXISTS estado TEXT NOT NULL DEFAULT 'EN_PROCESO',
+            ADD COLUMN IF NOT EXISTS motivo_rechazo TEXT NULL,
+            ADD COLUMN IF NOT EXISTS aprobado_at TIMESTAMP NULL,
+            ADD COLUMN IF NOT EXISTS rechazado_at TIMESTAMP NULL,
+            ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+            ADD COLUMN IF NOT EXISTS client_uuid UUID NULL,
+            ADD COLUMN IF NOT EXISTS ip INET NULL,
+            ADD COLUMN IF NOT EXISTS user_agent TEXT NULL,
+            ADD COLUMN IF NOT EXISTS evidencia_path TEXT NULL,
+            ADD COLUMN IF NOT EXISTS evidencia_url TEXT NULL;
+    ");
+    $conn->exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_pra_client_uuid ON pago_reportado_app (client_uuid)");
+    $conn->exec("CREATE INDEX IF NOT EXISTS idx_pra_estado ON pago_reportado_app (estado)");
+    $conn->exec("CREATE INDEX IF NOT EXISTS idx_pra_user_created ON pago_reportado_app (id_usuario, created_at DESC)");
+}
+
+function uuidv4(): string
+{
+    $data = random_bytes(16);
+    $data[6] = chr((ord($data[6]) & 0x0f) | 0x40);
+    $data[8] = chr((ord($data[8]) & 0x3f) | 0x80);
+    return vsprintf('%s%s-%s-%s-%s-%s%s%s', str_split(bin2hex($data), 4));
+}
+
+function evidence_directory(): string
+{
+    $dir = __DIR__ . '/uploads/evidencias';
+    if (!is_dir($dir)) {
+        mkdir($dir, 0775, true);
+    }
+    return $dir;
+}
+
+function build_public_url(string $path): string
+{
+    if (str_starts_with($path, 'http://') || str_starts_with($path, 'https://')) {
+        return $path;
+    }
+    $base = api_base_url();
+    $clean = ltrim(str_replace('\\', '/', $path), '/');
+    return rtrim($base, '/') . '/' . $clean;
+}
+
+function save_evidence_file(string $clientUuid, string $rawBase64, string $ext): array
+{
+    $allowed = ['jpg', 'jpeg', 'png', 'pdf'];
+    $ext = strtolower($ext);
+    if (!in_array($ext, $allowed, true)) {
+        throw new Exception('Extension de comprobante no permitida.');
+    }
+
+    $cleanData = preg_replace('/^data:[^;]+;base64,/', '', $rawBase64);
+    $binary = base64_decode($cleanData);
+    if ($binary === false) {
+        throw new Exception('Comprobante invalido.');
+    }
+
+    $dir = evidence_directory();
+    $filename = $clientUuid . '.' . $ext;
+    $path = $dir . '/' . $filename;
+    file_put_contents($path, $binary);
+
+    $relative = 'uploads/evidencias/' . $filename;
+    return [$path, build_public_url($relative)];
+}
+
 try {
     $conn = ConexionAPI::getInstance();
     $input = json_decode(file_get_contents("php://input"), true) ?? [];
@@ -171,6 +241,8 @@ try {
     }
 
     $userId = get_user_from_token($conn, $token);
+    ensure_tables($conn);
+    ensure_columns($conn);
 
     if ($accion === "preparar") {
         assert_required($input, ["id_inmueble"]);
@@ -204,12 +276,39 @@ try {
         $pagos = is_string($input["pagos"])
             ? json_decode($input["pagos"], true)
             : $input["pagos"];
+        $clientUuid = trim($input["client_uuid"] ?? "");
+        $clientUuidGenerated = false;
+        if ($clientUuid === "") {
+            $clientUuid = uuidv4();
+            $clientUuidGenerated = true;
+        }
 
         if (!is_array($notificaciones) || empty($notificaciones)) {
             respond_error("Debe incluir al menos una notificacion a pagar.", 400);
         }
         if (!is_array($pagos) || empty($pagos)) {
             respond_error("Debe incluir al menos un metodo de pago.", 400);
+        }
+
+        // Idempotencia
+        $stmtDup = $conn->prepare("
+            SELECT id, estado, created_at, client_uuid, evidencia_url, motivo_rechazo
+            FROM pago_reportado_app
+            WHERE client_uuid = :uuid
+            LIMIT 1
+        ");
+        $stmtDup->execute([":uuid" => $clientUuid]);
+        $dupRow = $stmtDup->fetch(PDO::FETCH_ASSOC);
+        if ($dupRow) {
+            respond_success([
+                "duplicado" => true,
+                "id" => (int)$dupRow["id"],
+                "estado" => $dupRow["estado"],
+                "created_at" => $dupRow["created_at"],
+                "client_uuid" => $dupRow["client_uuid"],
+                "evidencia_url" => $dupRow["evidencia_url"] ?? null,
+                "motivo_rechazo" => $dupRow["motivo_rechazo"] ?? null,
+            ]);
         }
 
         $pendientes = fetch_pendientes($conn, $idInmueble, $idMonedaBase);
@@ -219,6 +318,7 @@ try {
         }
 
         $totalAbonosBase = 0;
+        $totalPendienteBase = 0;
         foreach ($notificaciones as $n) {
             $idNotif = (int)($n["id_notificacion"] ?? 0);
             $abono = (float)($n["abono"] ?? 0);
@@ -231,7 +331,9 @@ try {
             if ($abono - $pendMap[$idNotif]["monto_x_pagar"] > 0.01) {
                 respond_error("El abono supera el saldo pendiente de la notificacion {$idNotif}.", 400);
             }
-            $tasa = (float)($n["tasa"] ?? get_tasa($conn, (int)$pendMap[$idNotif]["id_moneda"], $idMonedaBase));
+            $tasaNotif = get_tasa($conn, (int)$pendMap[$idNotif]["id_moneda"], $idMonedaBase);
+            $totalPendienteBase += $pendMap[$idNotif]["monto_x_pagar"] * $tasaNotif;
+            $tasa = (float)($n["tasa"] ?? $tasaNotif);
             if ($tasa <= 0) $tasa = 1;
             $totalAbonosBase += $abono * $tasa;
         }
@@ -248,22 +350,36 @@ try {
             $totalPagosBase += $monto * $tasa;
         }
 
-        if ($totalPagosBase + 0.01 < $totalAbonosBase) {
-            respond_error("El total de pagos es menor al total de abonos.", 400);
+        $comprobanteBase64 = $input["comprobante_base64"] ?? null;
+        $comprobanteExt = trim($input["comprobante_ext"] ?? "");
+        $evidPath = null;
+        $evidUrl = null;
+        if ($comprobanteBase64 && $comprobanteExt !== "") {
+            [$evidPath, $evidUrl] = save_evidence_file($clientUuid, $comprobanteBase64, $comprobanteExt);
         }
 
         ensure_tables($conn);
 
         $stmt = $conn->prepare("
             INSERT INTO pago_reportado_app
-            (id_usuario, id_inmueble, id_condominio, fecha_pago, observacion, total_base, moneda_base, detalle)
-            VALUES (:usr, :inm, :condo, :fecha, :obs, :total_base, :moneda_base, :detalle::jsonb)
+            (id_usuario, id_inmueble, id_condominio, fecha_pago, observacion, total_base, moneda_base, detalle, estado, client_uuid, ip, user_agent, evidencia_path, evidencia_url, updated_at)
+            VALUES (:usr, :inm, :condo, :fecha, :obs, :total_base, :moneda_base, :detalle::jsonb, 'EN_PROCESO', :client_uuid, :ip, :ua, :evid_path, :evid_url, NOW())
+            RETURNING id, created_at, estado, client_uuid, evidencia_url
         ");
+
+        $resumen = [
+            "pendiente_total_base" => $totalPendienteBase,
+            "abono_total_base" => $totalAbonosBase,
+            "pagos_total_base" => $totalPagosBase,
+            "count_notificaciones" => count($notificaciones),
+            "count_pagos" => count($pagos),
+        ];
 
         $det = [
             "notificaciones" => $notificaciones,
             "pagos" => $pagos,
             "observacion" => $observacion,
+            "resumen" => $resumen,
         ];
 
         $stmt->execute([
@@ -275,12 +391,27 @@ try {
             ":total_base" => $totalPagosBase,
             ":moneda_base" => $idMonedaBase,
             ":detalle" => json_encode($det),
+            ":client_uuid" => $clientUuid,
+            ":ip" => $_SERVER["REMOTE_ADDR"] ?? null,
+            ":ua" => $_SERVER["HTTP_USER_AGENT"] ?? null,
+            ":evid_path" => $evidPath,
+            ":evid_url" => $evidUrl,
         ]);
+
+        $inserted = $stmt->fetch(PDO::FETCH_ASSOC);
+        $cubreTotal = ($totalPagosBase + 0.01) >= $totalPendienteBase;
 
         respond_success([
             "message" => "Pago reportado para validacion.",
             "total_base" => $totalPagosBase,
             "moneda_base" => $idMonedaBase,
+            "id" => (int)$inserted["id"],
+            "estado" => $inserted["estado"],
+            "created_at" => $inserted["created_at"],
+            "client_uuid" => $inserted["client_uuid"],
+            "evidencia_url" => $inserted["evidencia_url"],
+            "client_uuid_generado" => $clientUuidGenerated,
+            "cubre_total_estimado" => $cubreTotal,
         ]);
     } else {
         respond_error("Accion no soportada.", 400);
