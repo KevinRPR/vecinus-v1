@@ -133,21 +133,7 @@ class _PaymentDetailScreenState extends State<PaymentDetailScreen> {
                 ),
               )
             else
-              Column(
-                children: _pagosActivos
-                    .map((pago) => _pagoTile(
-                          context,
-                          pago,
-                          cardColor,
-                          shadow,
-                          muted,
-                          _PagoBadge(
-                            label: _statusLabel(pago),
-                            color: _statusColor(pago),
-                          ),
-                        ))
-                    .toList(),
-              ),
+              _facturaDeudaCard(context, cardColor, shadow, muted),
             const SizedBox(height: 20),
             Text(
               'Historial de pagadas',
@@ -495,6 +481,131 @@ class _PaymentDetailScreenState extends State<PaymentDetailScreen> {
     );
   }
 
+  Widget _facturaDeudaCard(
+    BuildContext context,
+    Color cardColor,
+    Color shadow,
+    Color muted,
+  ) {
+    final items = _pagosActivos;
+    final total = items.fold<double>(0, (sum, p) => sum + _parseMonto(p.monto));
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: cardColor,
+        borderRadius: BorderRadius.circular(14),
+        boxShadow: [
+          BoxShadow(
+            color: shadow,
+            blurRadius: 10,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: const [
+              Icon(Icons.receipt_long, color: Color(0xff0ea5e9)),
+              SizedBox(width: 8),
+              Text(
+                'Factura de deuda',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          ...List.generate(items.length, (index) {
+            final pago = items[index];
+            final monto = _parseMonto(pago.monto);
+            final badge = _PagoBadge(
+              label: _statusLabel(pago),
+              color: _statusColor(pago),
+            );
+            return Column(
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            pago.descripcion ?? 'Pago',
+                            style: const TextStyle(fontWeight: FontWeight.w600),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            pago.fecha ?? pago.fechaEmision ?? pago.fechaVencimiento ?? '--',
+                            style: TextStyle(color: muted, fontSize: 12),
+                          ),
+                          const SizedBox(height: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: badge.color.withOpacity(0.12),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Text(
+                              badge.label,
+                              style: TextStyle(
+                                color: badge.color,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text(
+                          _formatCurrency(monto),
+                          style: const TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                        TextButton.icon(
+                          onPressed: () => _openDocument(context, pago),
+                          icon: const Icon(Icons.picture_as_pdf, size: 16),
+                          label: const Text('Documento'),
+                          style: TextButton.styleFrom(
+                            padding: EdgeInsets.zero,
+                            minimumSize: const Size(0, 32),
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+                if (index < items.length - 1) const Divider(),
+              ],
+            );
+          }),
+          const Divider(),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                'Total',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+              Text(
+                _formatCurrency(total),
+                style: const TextStyle(fontWeight: FontWeight.w700),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _pagoTile(
     BuildContext context,
     Pago pago,
@@ -613,6 +724,8 @@ class _PaymentDetailScreenState extends State<PaymentDetailScreen> {
   }
 
   String _formatCurrency(double value) => '\$${value.toStringAsFixed(2)}';
+  double _parseMonto(String? raw) =>
+      double.tryParse((raw ?? '').replaceAll(',', '.')) ?? 0;
 
   List<Pago> get _pagosActivos =>
       widget.inmueble.pagos.where((p) => _classifyPago(p) != _PagoState.paid).toList();

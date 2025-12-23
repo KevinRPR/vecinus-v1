@@ -8,7 +8,7 @@ import '../models/inmueble.dart';
 import '../services/api_service.dart';
 import '../services/notification_service.dart';
 
-enum _ReportStep { selectBank, bankDetails, form, success }
+enum _ReportStep { amount, selectBank, bankDetails, form, success }
 
 class ReportPaymentScreen extends StatefulWidget {
   final String token;
@@ -29,14 +29,13 @@ class _ReportPaymentScreenState extends State<ReportPaymentScreen> {
   String? _error;
   Map<String, dynamic>? _data;
   int? _selectedAccount;
-  _ReportStep _step = _ReportStep.selectBank;
+  _ReportStep _step = _ReportStep.amount;
   late final String _clientUuid;
+  bool _payFull = true;
 
   final TextEditingController _obsCtrl = TextEditingController();
   final TextEditingController _refCtrl = TextEditingController();
-  final TextEditingController _montoCtrl = TextEditingController();
   final TextEditingController _montoUsdCtrl = TextEditingController();
-  final TextEditingController _montoVesCtrl = TextEditingController();
   DateTime _fechaPago = DateTime.now();
 
   final _picker = ImagePicker();
@@ -55,9 +54,7 @@ class _ReportPaymentScreenState extends State<ReportPaymentScreen> {
   void dispose() {
     _obsCtrl.dispose();
     _refCtrl.dispose();
-    _montoCtrl.dispose();
     _montoUsdCtrl.dispose();
-    _montoVesCtrl.dispose();
     super.dispose();
   }
 
@@ -77,6 +74,9 @@ class _ReportPaymentScreenState extends State<ReportPaymentScreen> {
             ? res['moneda_base'] as int
             : int.tryParse(res['moneda_base']?.toString() ?? '');
         _loading = false;
+        if (_payFull) {
+          _applyFullAmount();
+        }
       });
     } catch (e) {
       setState(() {
@@ -119,42 +119,65 @@ class _ReportPaymentScreenState extends State<ReportPaymentScreen> {
   double get _tasaCuenta =>
       (_selectedAccountData?['tasa'] as num?)?.toDouble() ?? 1.0;
 
-  void _syncUsdFromVes() {
-    final ves = double.tryParse(_montoVesCtrl.text.replaceAll(',', '.')) ?? 0;
-    if (_tasaCuenta > 0) {
-      final usd = ves / _tasaCuenta;
-      _montoUsdCtrl.text = usd.isFinite ? usd.toStringAsFixed(2) : '';
-      _montoCtrl.text = _montoVesCtrl.text;
+  double get _montoUsd =>
+      double.tryParse(_montoUsdCtrl.text.replaceAll(',', '.')) ?? 0;
+
+  double get _montoLocal => _cuentaEsVes ? _montoUsd * _tasaCuenta : _montoUsd;
+
+  void _applyFullAmount() {
+    if (_totalPendienteBase > 0) {
+      _montoUsdCtrl.text = _totalPendienteBase.toStringAsFixed(2);
+    } else {
+      _montoUsdCtrl.clear();
     }
   }
 
-  void _syncVesFromUsd() {
-    final usd = double.tryParse(_montoUsdCtrl.text.replaceAll(',', '.')) ?? 0;
-    final ves = usd * _tasaCuenta;
-    _montoVesCtrl.text = ves.isFinite ? ves.toStringAsFixed(2) : '';
-    _montoCtrl.text = _montoVesCtrl.text;
-  }
-
-  double get _totalBase {
-    final monto = double.tryParse(_montoCtrl.text.replaceAll(',', '.')) ?? 0;
-    return monto * (_tasaCuenta > 0 ? _tasaCuenta : 1);
-  }
-
-  void _goToDetails(int idCuenta) {
+  void _changePayMode(bool payFull) {
     setState(() {
-      _selectedAccount = idCuenta;
-      _step = _ReportStep.bankDetails;
-      if (_cuentaEsVes) {
-        _montoUsdCtrl.text = '';
-        _montoVesCtrl.text = '';
-        _montoCtrl.text = '';
+      _payFull = payFull;
+      if (_payFull) {
+        _applyFullAmount();
       } else {
-        _montoCtrl.text = '';
+        _montoUsdCtrl.clear();
       }
     });
   }
 
+  void _onAmountChanged() {
+    setState(() {});
+  }
+
+  void _goToAmount() {
+    setState(() => _step = _ReportStep.amount);
+  }
+
+  void _goToSelectBank() {
+    if (_payFull) {
+      _applyFullAmount();
+    }
+    if (_montoUsd <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Ingresa un monto en USD.')),
+      );
+      return;
+    }
+    setState(() => _step = _ReportStep.selectBank);
+  }
+
+  void _goToBankDetails(int idCuenta) {
+    setState(() {
+      _selectedAccount = idCuenta;
+      _step = _ReportStep.bankDetails;
+    });
+  }
+
   void _goToForm() {
+    if (_montoUsd <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Ingresa un monto en USD.')),
+      );
+      return;
+    }
     setState(() => _step = _ReportStep.form);
   }
 
@@ -209,8 +232,9 @@ class _ReportPaymentScreenState extends State<ReportPaymentScreen> {
       );
       return;
     }
-    final monto = double.tryParse(_montoCtrl.text.replaceAll(',', '.')) ?? 0;
-    if (monto <= 0) {
+    final montoUsd = _montoUsd;
+    final montoLocal = _cuentaEsVes ? montoUsd * _tasaCuenta : montoUsd;
+    if (montoLocal <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Ingresa un monto valido.')),
       );
@@ -229,7 +253,7 @@ class _ReportPaymentScreenState extends State<ReportPaymentScreen> {
     final pagos = [
       {
         'id_moneda': cuenta['id_moneda'],
-        'monto': monto,
+        'monto': montoLocal,
         'tasa': cuenta['tasa'],
         'referencia': _refCtrl.text.trim(),
         'id_cuenta': cuenta['id_cuenta'],
@@ -312,23 +336,32 @@ class _ReportPaymentScreenState extends State<ReportPaymentScreen> {
 
   Widget _buildStep() {
     switch (_step) {
+      case _ReportStep.amount:
+        return _AmountStep(
+          totalPendienteBase: _totalPendienteBase,
+          payFull: _payFull,
+          montoUsdCtrl: _montoUsdCtrl,
+          onPayModeChange: _changePayMode,
+          onAmountChanged: _onAmountChanged,
+          onContinue: _goToSelectBank,
+        );
       case _ReportStep.selectBank:
         return _SelectBankStep(
           cuentas: _cuentas,
-          onSelect: _goToDetails,
+          amountUsd: _montoUsd,
+          onSelect: _goToBankDetails,
+          onBack: _goToAmount,
         );
       case _ReportStep.bankDetails:
         final cuenta = _selectedAccountData;
         return _BankDetailStep(
           cuenta: cuenta,
           inmueble: widget.inmueble,
-          totalBase: _totalBase,
           totalPendienteBase: _totalPendienteBase,
+          montoUsd: _montoUsd,
+          montoLocal: _montoLocal,
           cuentaEsVes: _cuentaEsVes,
-          montoUsdCtrl: _montoUsdCtrl,
-          montoVesCtrl: _montoVesCtrl,
-          onUsdChanged: _syncVesFromUsd,
-          onVesChanged: _syncUsdFromVes,
+          tasaCuenta: _tasaCuenta,
           onContinue: _goToForm,
           onBack: () => setState(() => _step = _ReportStep.selectBank),
         );
@@ -340,12 +373,10 @@ class _ReportPaymentScreenState extends State<ReportPaymentScreen> {
           pendientes: _pendientes,
           obsCtrl: _obsCtrl,
           refCtrl: _refCtrl,
-          montoCtrl: _montoCtrl,
-          montoUsdCtrl: _montoUsdCtrl,
-          montoVesCtrl: _montoVesCtrl,
           cuentaEsVes: _cuentaEsVes,
-          onUsdChanged: _syncVesFromUsd,
-          onVesChanged: _syncUsdFromVes,
+          montoUsd: _montoUsd,
+          montoLocal: _montoLocal,
+          tasaCuenta: _tasaCuenta,
           totalPendienteBase: _totalPendienteBase,
           onPickDate: _pickDate,
           onSubmit: _submit,
@@ -359,13 +390,21 @@ class _ReportPaymentScreenState extends State<ReportPaymentScreen> {
   }
 }
 
-class _SelectBankStep extends StatelessWidget {
-  final List<Map<String, dynamic>> cuentas;
-  final ValueChanged<int> onSelect;
+class _AmountStep extends StatelessWidget {
+  final double totalPendienteBase;
+  final bool payFull;
+  final TextEditingController montoUsdCtrl;
+  final ValueChanged<bool> onPayModeChange;
+  final VoidCallback onAmountChanged;
+  final VoidCallback onContinue;
 
-  const _SelectBankStep({
-    required this.cuentas,
-    required this.onSelect,
+  const _AmountStep({
+    required this.totalPendienteBase,
+    required this.payFull,
+    required this.montoUsdCtrl,
+    required this.onPayModeChange,
+    required this.onAmountChanged,
+    required this.onContinue,
   });
 
   @override
@@ -375,15 +414,120 @@ class _SelectBankStep extends StatelessWidget {
       padding: const EdgeInsets.all(16),
       children: [
         Text(
-          'Por cual banco desea pagar?',
+          'Cuanto deseas pagar?',
           style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700, fontSize: 18),
         ),
         const SizedBox(height: 12),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Deuda total (USD)', style: TextStyle(fontWeight: FontWeight.w700)),
+                const SizedBox(height: 6),
+                Text(
+                  '\$${totalPendienteBase.toStringAsFixed(2)}',
+                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: RadioListTile<bool>(
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                value: true,
+                groupValue: payFull,
+                title: const Text('Pagar todo'),
+                onChanged: (_) => onPayModeChange(true),
+              ),
+            ),
+            Expanded(
+              child: RadioListTile<bool>(
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                value: false,
+                groupValue: payFull,
+                title: const Text('Monto personalizado'),
+                onChanged: (_) => onPayModeChange(false),
+              ),
+            ),
+          ],
+        ),
+        TextField(
+          controller: montoUsdCtrl,
+          readOnly: payFull,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: const InputDecoration(
+            labelText: 'Monto en USD',
+            suffixText: 'USD',
+          ),
+          onChanged: (_) => onAmountChanged(),
+        ),
+        const SizedBox(height: 16),
+        ElevatedButton(
+          onPressed: onContinue,
+          child: const Text('Elegir metodo de pago'),
+        ),
+      ],
+    );
+  }
+}
+
+class _SelectBankStep extends StatelessWidget {
+  final List<Map<String, dynamic>> cuentas;
+  final double amountUsd;
+  final ValueChanged<int> onSelect;
+  final VoidCallback onBack;
+
+  const _SelectBankStep({
+    required this.cuentas,
+    required this.onSelect,
+    required this.amountUsd,
+    required this.onBack,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        Row(
+          children: [
+            IconButton(
+              icon: const Icon(Icons.arrow_back),
+              onPressed: onBack,
+            ),
+            Text(
+              'Elige el metodo de pago',
+              style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700, fontSize: 18),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        if (amountUsd > 0)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Text(
+              'Monto en USD: \$${amountUsd.toStringAsFixed(2)}',
+              style: const TextStyle(color: Colors.grey),
+            ),
+          ),
         if (cuentas.isEmpty)
           const Text('No hay bancos disponibles.')
         else
-          ...cuentas.map(
-            (c) => Container(
+          ...cuentas.map((c) {
+            final moneda = (c['moneda'] ?? '').toString();
+            final esVes = moneda.toUpperCase().contains('VES') || moneda.toUpperCase().contains('BS');
+            final tasa = (c['tasa'] as num?)?.toDouble() ?? 1;
+            final montoLocal = amountUsd > 0 ? (esVes ? amountUsd * tasa : amountUsd) : null;
+            return Container(
               margin: const EdgeInsets.only(bottom: 12),
               child: ElevatedButton(
                 style: ElevatedButton.styleFrom(
@@ -400,14 +544,23 @@ class _SelectBankStep extends StatelessWidget {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      '${c['codigo_banco'] ?? ''} ${c['moneda'] ?? ''}',
+                      '${c['codigo_banco'] ?? ''} $moneda',
                       style: TextStyle(color: Colors.grey.shade700, fontSize: 14),
                     ),
+                    if (montoLocal != null) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        esVes
+                            ? 'Pagaras: ${montoLocal.toStringAsFixed(2)} $moneda (tasa ${tasa.toStringAsFixed(2)} $moneda/USD)'
+                            : 'Pagaras: \$${montoLocal.toStringAsFixed(2)}',
+                        style: const TextStyle(color: Colors.grey),
+                      ),
+                    ],
                   ],
                 ),
               ),
-            ),
-          ),
+            );
+          }),
       ],
     );
   }
@@ -416,26 +569,22 @@ class _SelectBankStep extends StatelessWidget {
 class _BankDetailStep extends StatelessWidget {
   final Map<String, dynamic>? cuenta;
   final Inmueble inmueble;
-  final double totalBase;
   final double totalPendienteBase;
+  final double montoUsd;
+  final double montoLocal;
   final bool cuentaEsVes;
-  final TextEditingController montoUsdCtrl;
-  final TextEditingController montoVesCtrl;
-  final VoidCallback onUsdChanged;
-  final VoidCallback onVesChanged;
+  final double tasaCuenta;
   final VoidCallback onContinue;
   final VoidCallback onBack;
 
   const _BankDetailStep({
     required this.cuenta,
     required this.inmueble,
-    required this.totalBase,
     required this.totalPendienteBase,
+    required this.montoUsd,
+    required this.montoLocal,
     required this.cuentaEsVes,
-    required this.montoUsdCtrl,
-    required this.montoVesCtrl,
-    required this.onUsdChanged,
-    required this.onVesChanged,
+    required this.tasaCuenta,
     required this.onContinue,
     required this.onBack,
   });
@@ -462,6 +611,7 @@ class _BankDetailStep extends StatelessWidget {
       );
     }
 
+    final monedaLabel = cuenta?['moneda'] ?? (cuentaEsVes ? 'VES' : 'USD');
     final rows = [
       ['Banco', '${cuenta!['codigo_banco'] ?? ''} ${cuenta!['banco'] ?? ''}'],
       ['Cuenta', cuenta!['numero_cuenta_cliente'] ?? '--'],
@@ -494,44 +644,29 @@ class _BankDetailStep extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 16),
+        const Text(
+          'Resumen',
+          style: TextStyle(fontWeight: FontWeight.w700),
+        ),
+        const SizedBox(height: 8),
+        if (totalPendienteBase > 0)
+          _InfoRow(
+            label: 'Deuda total (USD)',
+            value: '\$${totalPendienteBase.toStringAsFixed(2)}',
+          ),
         _InfoRow(
-          label: 'Deuda total (base)',
-          value: '\$${totalPendienteBase.toStringAsFixed(2)}',
+          label: 'Monto seleccionado (USD)',
+          value: '\$${montoUsd.toStringAsFixed(2)}',
         ),
         _InfoRow(
-          label: 'Equivalente',
-          value:
-              '${(totalPendienteBase * ((cuenta!['tasa'] as num?)?.toDouble() ?? 1)).toStringAsFixed(2)} ${cuenta!['moneda'] ?? ''}',
+          label: 'A pagar en $monedaLabel',
+          value: '${montoLocal.toStringAsFixed(2)} $monedaLabel',
         ),
-        const SizedBox(height: 12),
-        if (cuentaEsVes) ...[
-          const Text(
-            'Calculadora de divisas',
-            style: TextStyle(fontWeight: FontWeight.w700),
+        if (cuentaEsVes)
+          _InfoRow(
+            label: 'Tasa aplicada',
+            value: '${tasaCuenta.toStringAsFixed(2)} $monedaLabel / USD',
           ),
-          const SizedBox(height: 8),
-          TextField(
-            controller: montoUsdCtrl,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: const InputDecoration(
-              labelText: 'Monto en USD',
-              suffixText: 'USD',
-            ),
-            onChanged: (_) => onUsdChanged(),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: montoVesCtrl,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: InputDecoration(
-              labelText: 'Monto en VES',
-              suffixText: cuenta?['moneda'] ?? 'VES',
-              helperText: 'Tasa: ${(cuenta?['tasa'] as num?)?.toDouble() ?? 1} ${cuenta?['moneda'] ?? 'VES'} por USD',
-            ),
-            onChanged: (_) => onVesChanged(),
-          ),
-          const SizedBox(height: 16),
-        ],
         const SizedBox(height: 24),
         ElevatedButton(
           onPressed: onContinue,
@@ -548,12 +683,10 @@ class _PaymentFormStep extends StatelessWidget {
   final List<Map<String, dynamic>> pendientes;
   final TextEditingController obsCtrl;
   final TextEditingController refCtrl;
-  final TextEditingController montoCtrl;
-  final TextEditingController montoUsdCtrl;
-  final TextEditingController montoVesCtrl;
   final bool cuentaEsVes;
-  final VoidCallback onUsdChanged;
-  final VoidCallback onVesChanged;
+  final double montoUsd;
+  final double montoLocal;
+  final double tasaCuenta;
   final double totalPendienteBase;
   final VoidCallback onPickDate;
   final VoidCallback onSubmit;
@@ -567,12 +700,10 @@ class _PaymentFormStep extends StatelessWidget {
     required this.pendientes,
     required this.obsCtrl,
     required this.refCtrl,
-    required this.montoCtrl,
-    required this.montoUsdCtrl,
-    required this.montoVesCtrl,
     required this.cuentaEsVes,
-    required this.onUsdChanged,
-    required this.onVesChanged,
+    required this.montoUsd,
+    required this.montoLocal,
+    required this.tasaCuenta,
     required this.totalPendienteBase,
     required this.onPickDate,
     required this.onSubmit,
@@ -584,6 +715,8 @@ class _PaymentFormStep extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final monedaLabel = cuenta?['moneda'] ?? (cuentaEsVes ? 'VES' : 'USD');
+    final tasa = tasaCuenta > 0 ? tasaCuenta : 1;
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
@@ -616,13 +749,26 @@ class _PaymentFormStep extends StatelessWidget {
                   '\$${totalPendienteBase.toStringAsFixed(2)}',
                   style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
                 ),
-                if (cuenta != null && cuenta!['tasa'] != null) ...[
-                  const SizedBox(height: 4),
+                const SizedBox(height: 8),
+                const Text(
+                  'Monto seleccionado',
+                  style: TextStyle(fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '\$${montoUsd.toStringAsFixed(2)}',
+                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'A pagar: ${montoLocal.toStringAsFixed(2)} $monedaLabel',
+                  style: const TextStyle(color: Colors.grey),
+                ),
+                if (cuentaEsVes)
                   Text(
-                    'Equivalente: ${(totalPendienteBase * ((cuenta!['tasa'] as num?)?.toDouble() ?? 1)).toStringAsFixed(2)} ${cuenta!['moneda'] ?? ''}',
+                    'Tasa aplicada: ${tasa.toStringAsFixed(2)} $monedaLabel / USD',
                     style: const TextStyle(color: Colors.grey),
                   ),
-                ],
               ],
             ),
           ),
@@ -649,36 +795,6 @@ class _PaymentFormStep extends StatelessWidget {
             labelText: 'Numero de referencia',
           ),
         ),
-        const SizedBox(height: 12),
-        if (cuentaEsVes) ...[
-          TextField(
-            controller: montoUsdCtrl,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: const InputDecoration(
-              labelText: 'Monto en USD',
-              suffixText: 'USD',
-            ),
-            onChanged: (_) => onUsdChanged(),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: montoVesCtrl,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: InputDecoration(
-              labelText: 'Monto en VES',
-              suffixText: cuenta?['moneda'] ?? 'VES',
-              helperText: 'Tasa: ${(cuenta?['tasa'] as num?)?.toDouble() ?? 1} ${cuenta?['moneda'] ?? 'VES'} por USD',
-            ),
-            onChanged: (_) => onVesChanged(),
-          ),
-        ] else
-          TextField(
-            controller: montoCtrl,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: InputDecoration(
-              labelText: 'Monto pagado${cuenta != null ? ' (${cuenta!['moneda']})' : ''}',
-            ),
-          ),
         const SizedBox(height: 12),
         TextField(
           readOnly: true,
