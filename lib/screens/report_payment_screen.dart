@@ -124,7 +124,7 @@ class _ReportPaymentScreenState extends State<ReportPaymentScreen> {
   double get _montoUsd =>
       double.tryParse(_montoUsdCtrl.text.replaceAll(',', '.')) ?? 0;
 
-  double get _montoLocal => _cuentaEsVes ? _montoUsd * _tasaCuenta : _montoUsd;
+  double get _montoLocal => _montoUsd / _tasaCuenta;
 
   void _applyFullAmount() {
     if (_totalPendienteBase > 0) {
