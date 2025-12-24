@@ -466,7 +466,7 @@ class _UserScreenState extends State<UserScreen> {
               'Modo oscuro',
               style: textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
             ),
-            subtitle: const Text('Usa tonos carbón modernos para baja luz.'),
+            subtitle: const Text('Usa tonos carbon modernos para baja luz.'),
             value: isDark,
             onChanged: (value) => themeController.toggleDark(value),
             activeColor: Theme.of(context).colorScheme.primary,
@@ -554,3 +554,6 @@ class _UserScreenState extends State<UserScreen> {
     );
   }
 }
+
+
+

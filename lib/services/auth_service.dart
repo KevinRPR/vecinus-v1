@@ -1,9 +1,10 @@
 import 'dart:convert';
+
 import 'package:shared_preferences/shared_preferences.dart';
 
 class AuthService {
   static const String _tokenKey = "auth_token";
-  static const String _userKey  = "auth_user";
+  static const String _userKey = "auth_user";
   static const String _expiryKey = "auth_expiration";
 
   /// Guarda token y datos de usuario
@@ -11,9 +12,12 @@ class AuthService {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_tokenKey, token);
     await prefs.setString(_userKey, jsonEncode(user));
+
     final expiresAt = user['session_expires_at'];
-    if (expiresAt is String) {
+    if (expiresAt is String && expiresAt.isNotEmpty) {
       await prefs.setString(_expiryKey, expiresAt);
+    } else if (expiresAt is DateTime) {
+      await prefs.setString(_expiryKey, expiresAt.toIso8601String());
     } else {
       await prefs.remove(_expiryKey);
     }
@@ -33,7 +37,7 @@ class AuthService {
     return jsonDecode(json);
   }
 
-  /// Borra la sesión por completo
+  /// Borra la sesion por completo
   static Future<void> logout() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_tokenKey);
@@ -41,7 +45,7 @@ class AuthService {
     await prefs.remove(_expiryKey);
   }
 
-  /// Verifica si hay sesión activa
+  /// Verifica si hay sesion activa
   static Future<bool> isLoggedIn() async {
     final token = await getToken();
     final expiration = await _getExpiration();
@@ -52,7 +56,7 @@ class AuthService {
   static Future<DateTime?> _getExpiration() async {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString(_expiryKey);
-    if (raw == null) return null;
+    if (raw == null || raw.isEmpty) return null;
     return DateTime.tryParse(raw);
   }
 }

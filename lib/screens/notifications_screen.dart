@@ -99,8 +99,9 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         child: const Icon(Icons.delete, color: Colors.white),
       ),
       onDismissed: (_) {
-        NotificationService.remove(item.id);
-        setState(() => _items = NotificationService.all());
+        NotificationService.remove(item.id).then((_) {
+          setState(() => _items = NotificationService.all());
+        });
       },
       child: Container(
         padding: const EdgeInsets.all(16),

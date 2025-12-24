@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+
 import '../models/inmueble.dart';
 import '../models/pago.dart';
 
@@ -24,7 +25,7 @@ class InmuebleDetailScreen extends StatelessWidget {
           _sectionTitle('Resumen'),
           _infoTile('Estado', _estadoLabel(inmueble.estado)),
           _infoTile('Tipo', _valueOrDash(inmueble.tipo)),
-          _infoTile('Dirección', _direccion(inmueble)),
+          _infoTile('Direccion', _direccion(inmueble)),
           const SizedBox(height: 24),
           _sectionTitle('Identificadores'),
           _infoTile('ID inmueble', inmueble.idInmueble),
@@ -36,7 +37,7 @@ class InmuebleDetailScreen extends StatelessWidget {
           _sectionTitle('Tiempos'),
           _infoTile('Creado', _valueOrDash(inmueble.fechaCreacion)),
           _infoTile('Actualizado', _valueOrDash(inmueble.fechaActualizacion)),
-          _infoTile('Próximo pago', _proximaFechaPago()),
+          _infoTile('Proximo pago', _proximaFechaPago()),
           const SizedBox(height: 24),
           _sectionTitle('Finanzas'),
           _infoTile('Deuda actual', _formatMonto(inmueble.deudaActual)),
@@ -165,7 +166,7 @@ class InmuebleDetailScreen extends StatelessWidget {
                     Expanded(
                       child: Center(
                         child: Text(
-                          'Aún no se registran pagos para este inmueble.',
+                          'Aun no se registran pagos para este inmueble.',
                           textAlign: TextAlign.center,
                           style: TextStyle(
                             fontSize: 14,
@@ -239,7 +240,7 @@ class InmuebleDetailScreen extends StatelessWidget {
   String _estadoLabel(EstadoInmueble estado) {
     switch (estado) {
       case EstadoInmueble.alDia:
-        return 'Al día';
+        return 'Al dia';
       case EstadoInmueble.pendiente:
         return 'Pendiente';
       case EstadoInmueble.moroso:
@@ -282,7 +283,8 @@ class InmuebleDetailScreen extends StatelessWidget {
     if (raw == null || raw.trim().isEmpty) {
       return '--';
     }
-    final sanitized = raw.replaceAll(RegExp(r'[^0-9.,-]'), '').replaceAll(',', '.');
+    final sanitized =
+        raw.replaceAll(RegExp(r'[^0-9.,-]'), '').replaceAll(',', '.');
     final value = double.tryParse(sanitized);
     if (value == null) {
       return raw;

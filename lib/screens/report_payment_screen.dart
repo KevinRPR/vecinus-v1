@@ -41,7 +41,9 @@ class _ReportPaymentScreenState extends State<ReportPaymentScreen> {
   final _picker = ImagePicker();
   String? _evidenceBase64;
   String? _evidenceExt;
+  String? _evidenceName;
   int? _monedaBase;
+  String? _formError;
 
   @override
   void initState() {
@@ -181,8 +183,8 @@ class _ReportPaymentScreenState extends State<ReportPaymentScreen> {
     setState(() => _step = _ReportStep.form);
   }
 
-  void _goToSuccess() {
-    NotificationService.add(
+  Future<void> _goToSuccess() async {
+    await NotificationService.add(
       title: 'Tu pago esta siendo procesado',
       subtitle: 'Se esta conciliando tu reporte',
       kind: NotificationKind.info,
@@ -215,6 +217,7 @@ class _ReportPaymentScreenState extends State<ReportPaymentScreen> {
     setState(() {
       _evidenceBase64 = 'data:image/$ext;base64,$encoded';
       _evidenceExt = ext;
+      _evidenceName = file.name;
     });
   }
 
@@ -232,6 +235,10 @@ class _ReportPaymentScreenState extends State<ReportPaymentScreen> {
       );
       return;
     }
+    if (_refCtrl.text.trim().isEmpty) {
+      setState(() => _formError = 'Agrega la referencia del pago.');
+      return;
+    }
     final montoUsd = _montoUsd;
     final montoLocal = _cuentaEsVes ? montoUsd * _tasaCuenta : montoUsd;
     if (montoLocal <= 0) {
@@ -240,6 +247,7 @@ class _ReportPaymentScreenState extends State<ReportPaymentScreen> {
       );
       return;
     }
+    setState(() => _formError = null);
 
     final notificaciones = _pendientes
         .map((p) => {
@@ -279,7 +287,7 @@ class _ReportPaymentScreenState extends State<ReportPaymentScreen> {
           const SnackBar(content: Text('Este pago ya fue reportado.')),
         );
       }
-      _goToSuccess();
+      await _goToSuccess();
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -314,13 +322,21 @@ class _ReportPaymentScreenState extends State<ReportPaymentScreen> {
       );
     }
 
+    final resumen = _buildSummaryBar();
     return Scaffold(
       appBar: AppBar(title: const Text('Pagar')),
       body: Stack(
         children: [
-          AnimatedSwitcher(
-            duration: const Duration(milliseconds: 220),
-            child: _buildStep(),
+          Column(
+            children: [
+              if (resumen != null) resumen,
+              Expanded(
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 220),
+                  child: _buildStep(),
+                ),
+              ),
+            ],
           ),
           if (_loading)
             Positioned.fill(
@@ -344,6 +360,7 @@ class _ReportPaymentScreenState extends State<ReportPaymentScreen> {
           onPayModeChange: _changePayMode,
           onAmountChanged: _onAmountChanged,
           onContinue: _goToSelectBank,
+          cuentaSeleccionada: _selectedAccountData,
         );
       case _ReportStep.selectBank:
         return _SelectBankStep(
@@ -351,6 +368,7 @@ class _ReportPaymentScreenState extends State<ReportPaymentScreen> {
           amountUsd: _montoUsd,
           onSelect: _goToBankDetails,
           onBack: _goToAmount,
+          onBackToAmount: _goToAmount,
         );
       case _ReportStep.bankDetails:
         final cuenta = _selectedAccountData;
@@ -382,10 +400,93 @@ class _ReportPaymentScreenState extends State<ReportPaymentScreen> {
           onSubmit: _submit,
           onBack: () => setState(() => _step = _ReportStep.bankDetails),
           onPickEvidence: _pickEvidence,
-          evidenceLabel: _evidenceBase64 != null ? 'Comprobante adjuntado' : 'Adjuntar comprobante',
+          evidenceLabel: _evidenceLabel,
+          evidencePreview: _evidencePreview(),
+          error: _formError,
         );
       case _ReportStep.success:
         return _SuccessStep(onClose: () => Navigator.of(context).pop(true));
+    }
+  }
+
+  Widget? _buildSummaryBar() {
+    if (_step == _ReportStep.success) return null;
+    final cuenta = _selectedAccountData;
+    final moneda = (cuenta?['moneda'] ?? '').toString();
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xff182032) : const Color(0xffe7f1ff),
+        border: Border(
+          bottom: BorderSide(
+            color: isDark ? Colors.white10 : Colors.black12,
+          ),
+        ),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.summarize, color: theme.colorScheme.primary),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Monto: \$${_montoUsd.toStringAsFixed(2)}',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    color: theme.colorScheme.onSurface,
+                  ),
+                ),
+                Text(
+                  cuenta == null
+                      ? 'Sin banco elegido'
+                      : 'Banco: ${cuenta['banco'] ?? cuenta['nombre']} (${moneda.isEmpty ? 'USD' : moneda})',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: isDark ? Colors.white70 : Colors.black87,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (_montoUsd > 0)
+            TextButton(
+              onPressed: _goToAmount,
+              child: const Text('Editar'),
+            ),
+        ],
+      ),
+    );
+  }
+
+  String get _evidenceLabel {
+    if (_evidenceName != null) return 'Adjuntado: $_evidenceName';
+    if (_evidenceBase64 != null) return 'Comprobante adjuntado';
+    return 'Adjuntar comprobante';
+  }
+
+  Widget? _evidencePreview() {
+    if (_evidenceBase64 == null) return null;
+    final base64 = _evidenceBase64!;
+    final bytes = base64.contains(',') ? base64.split(',').last : base64;
+    try {
+      return Padding(
+        padding: const EdgeInsets.only(top: 8.0),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: Image.memory(
+            base64Decode(bytes),
+            height: 120,
+            fit: BoxFit.cover,
+          ),
+        ),
+      );
+    } catch (_) {
+      return null;
     }
   }
 }
@@ -397,6 +498,7 @@ class _AmountStep extends StatelessWidget {
   final ValueChanged<bool> onPayModeChange;
   final VoidCallback onAmountChanged;
   final VoidCallback onContinue;
+  final Map<String, dynamic>? cuentaSeleccionada;
 
   const _AmountStep({
     required this.totalPendienteBase,
@@ -405,6 +507,7 @@ class _AmountStep extends StatelessWidget {
     required this.onPayModeChange,
     required this.onAmountChanged,
     required this.onContinue,
+    required this.cuentaSeleccionada,
   });
 
   @override
@@ -470,6 +573,22 @@ class _AmountStep extends StatelessWidget {
           onChanged: (_) => onAmountChanged(),
         ),
         const SizedBox(height: 16),
+        if (cuentaSeleccionada != null)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Row(
+              children: [
+                const Icon(Icons.account_balance, size: 18),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    'Usarás ${cuentaSeleccionada?['banco'] ?? cuentaSeleccionada?['nombre'] ?? 'la cuenta seleccionada'}',
+                    style: const TextStyle(fontSize: 13, color: Colors.grey),
+                  ),
+                ),
+              ],
+            ),
+          ),
         ElevatedButton(
           onPressed: onContinue,
           child: const Text('Elegir metodo de pago'),
@@ -484,12 +603,14 @@ class _SelectBankStep extends StatelessWidget {
   final double amountUsd;
   final ValueChanged<int> onSelect;
   final VoidCallback onBack;
+  final VoidCallback onBackToAmount;
 
   const _SelectBankStep({
     required this.cuentas,
     required this.onSelect,
     required this.amountUsd,
     required this.onBack,
+    required this.onBackToAmount,
   });
 
   @override
@@ -511,6 +632,10 @@ class _SelectBankStep extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 8),
+        TextButton(
+          onPressed: onBackToAmount,
+          child: const Text('Cambiar monto'),
+        ),
         if (amountUsd > 0)
           Padding(
             padding: const EdgeInsets.only(bottom: 12),
@@ -693,6 +818,8 @@ class _PaymentFormStep extends StatelessWidget {
   final VoidCallback onBack;
   final VoidCallback onPickEvidence;
   final String? evidenceLabel;
+  final Widget? evidencePreview;
+  final String? error;
 
   const _PaymentFormStep({
     required this.cuenta,
@@ -710,6 +837,8 @@ class _PaymentFormStep extends StatelessWidget {
     required this.onBack,
     required this.onPickEvidence,
     required this.evidenceLabel,
+    required this.evidencePreview,
+    this.error,
   });
 
   @override
@@ -732,86 +861,13 @@ class _PaymentFormStep extends StatelessWidget {
             ),
           ],
         ),
-        const SizedBox(height: 12),
-        Card(
-          margin: const EdgeInsets.only(bottom: 12),
-          child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Deuda total',
-                  style: TextStyle(fontWeight: FontWeight.w700),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  '\$${totalPendienteBase.toStringAsFixed(2)}',
-                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
-                ),
-                const SizedBox(height: 8),
-                const Text(
-                  'Monto seleccionado',
-                  style: TextStyle(fontWeight: FontWeight.w700),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  '\$${montoUsd.toStringAsFixed(2)}',
-                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'A pagar: ${montoLocal.toStringAsFixed(2)} $monedaLabel',
-                  style: const TextStyle(color: Colors.grey),
-                ),
-                if (cuentaEsVes)
-                  Text(
-                    'Tasa aplicada: ${tasa.toStringAsFixed(2)} $monedaLabel / USD',
-                    style: const TextStyle(color: Colors.grey),
-                  ),
-              ],
-            ),
-          ),
-        ),
-        if (pendientes.isNotEmpty)
-          ...pendientes.map(
-            (p) => Card(
-              margin: const EdgeInsets.only(bottom: 10),
-              child: ListTile(
-                title: Text(
-                  p['descripcion'] ?? 'Notificacion',
-                  style: const TextStyle(fontWeight: FontWeight.w700),
-                ),
-                subtitle: Text(
-                  '${p['codigo_moneda']} pendiente: ${p['monto_x_pagar']}',
-                  style: const TextStyle(color: Colors.grey),
-                ),
-              ),
-            ),
-          ),
+        const SizedBox(height: 16),
         TextField(
           controller: refCtrl,
+          keyboardType: TextInputType.number,
           decoration: const InputDecoration(
             labelText: 'Numero de referencia',
-          ),
-        ),
-        const SizedBox(height: 12),
-        TextField(
-          readOnly: true,
-          controller: TextEditingController(
-            text: '${fechaPago.year}-${fechaPago.month.toString().padLeft(2, '0')}-${fechaPago.day.toString().padLeft(2, '0')}',
-          ),
-          decoration: const InputDecoration(
-            labelText: 'Fecha del pago',
-            suffixIcon: Icon(Icons.calendar_today),
-          ),
-          onTap: onPickDate,
-        ),
-        const SizedBox(height: 12),
-        TextField(
-          controller: obsCtrl,
-          decoration: const InputDecoration(
-            labelText: 'Observaciones (opcional)',
+            prefixIcon: Icon(Icons.pin),
           ),
         ),
         const SizedBox(height: 12),
@@ -820,6 +876,14 @@ class _PaymentFormStep extends StatelessWidget {
           icon: const Icon(Icons.attach_file),
           label: Text(evidenceLabel ?? 'Adjuntar comprobante'),
         ),
+        if (evidencePreview != null) evidencePreview!,
+        if (error != null) ...[
+          const SizedBox(height: 12),
+          Text(
+            error!,
+            style: const TextStyle(color: Colors.redAccent, fontWeight: FontWeight.w600),
+          ),
+        ],
         const SizedBox(height: 24),
         ElevatedButton(
           onPressed: onSubmit,
