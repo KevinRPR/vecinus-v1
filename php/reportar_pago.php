@@ -347,7 +347,7 @@ try {
             }
             $tasa = (float)($p["tasa"] ?? get_tasa($conn, $idMon, $idMonedaBase));
             if ($tasa <= 0) $tasa = 1;
-            $totalPagosBase += $monto * $tasa;
+            $totalPagosBase += $monto / $tasa;
         }
 
         $comprobanteBase64 = $input["comprobante_base64"] ?? null;
