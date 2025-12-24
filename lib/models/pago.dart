@@ -50,4 +50,20 @@ class Pago {
       token: _pick(['token']),
     );
   }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id_pago': id,
+      'descripcion': descripcion,
+      'fecha': fecha,
+      'fecha_vencimiento': fechaVencimiento,
+      'fecha_emision': fechaEmision,
+      'monto': monto,
+      'estado': estado,
+      'documento_url': documentoUrl,
+      'recibo_url': reciboUrl,
+      'notificacion_url': notificacionUrl,
+      'token': token,
+    };
+  }
 }

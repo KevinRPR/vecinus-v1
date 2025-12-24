@@ -333,7 +333,7 @@ $cuentas = $stmt->fetchAll(PDO::FETCH_ASSOC);
                 console.warn(`Tasa inválida (${tasa}) detectada para ${mon}, usando 1 como valor predeterminado.`);
                 tasa = 1; // Forzar tasa mínima de 1
             }
-            const base = monto * tasa;
+            const base = monto / tasa;
             window.totMon[mon] = (window.totMon[mon] || 0) + monto;
             window.totBase[mon] = (window.totBase[mon] || 0) + base;
             totalB += base;

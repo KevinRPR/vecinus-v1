@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 
 import '../animations/shimmers.dart';
 import '../animations/stagger_list.dart';
@@ -10,6 +10,7 @@ class PaymentsScreen extends StatelessWidget {
   final bool loading;
   final Future<void> Function() onRefresh;
   final String token;
+  final DateTime? lastSync;
 
   const PaymentsScreen({
     super.key,
@@ -17,6 +18,7 @@ class PaymentsScreen extends StatelessWidget {
     required this.loading,
     required this.onRefresh,
     required this.token,
+    this.lastSync,
   });
 
   double get totalDeuda => inmuebles.fold(
@@ -40,7 +42,7 @@ class PaymentsScreen extends StatelessWidget {
         title: const Text('Pagos'),
         centerTitle: true,
       ),
-      body: loading
+      body: loading && inmuebles.isEmpty
           ? _loadingSkeleton()
           : RefreshIndicator(
               onRefresh: onRefresh,
@@ -50,6 +52,13 @@ class PaymentsScreen extends StatelessWidget {
                     const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
                 children: [
                   _summaryCard(cardColor, shadowColor, textMuted),
+                  if (lastSync != null) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      'Actualizado: ${_formatLastSync(lastSync!)}',
+                      style: TextStyle(color: textMuted, fontSize: 12),
+                    ),
+                  ],
                   const SizedBox(height: 24),
                   Text(
                     'Detalle por inmueble',
@@ -73,6 +82,7 @@ class PaymentsScreen extends StatelessWidget {
                         cardColor,
                         shadowColor,
                         textMuted,
+                        inmuebles,
                       ),
                     ),
                   const SizedBox(height: 24),
@@ -157,15 +167,26 @@ class PaymentsScreen extends StatelessWidget {
     );
   }
 
+  String _formatLastSync(DateTime value) {
+    final now = DateTime.now();
+    final isToday =
+        value.year == now.year && value.month == now.month && value.day == now.day;
+    String two(int n) => n.toString().padLeft(2, '0');
+    final time = '${two(value.hour)}:${two(value.minute)}';
+    if (isToday) return 'Hoy $time';
+    return '${two(value.day)}/${two(value.month)} $time';
+  }
+
   List<Widget> _buildGroupedByCondominio(
     BuildContext context,
     bool isDark,
     Color cardColor,
     Color shadowColor,
     Color textMuted,
+    List<Inmueble> list,
   ) {
     final Map<String, List<Inmueble>> grouped = {};
-    for (final inmueble in inmuebles) {
+    for (final inmueble in list) {
       final label = _condominioLabel(inmueble);
       grouped.putIfAbsent(label, () => []).add(inmueble);
     }
@@ -294,7 +315,7 @@ class PaymentsScreen extends StatelessWidget {
                 SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    'Sin deuda pendiente. ¡Gracias por estar al dia!',
+                    'Sin deuda pendiente. Gracias por estar al dia!',
                     style: TextStyle(
                       color: Color(0xff166534),
                       fontWeight: FontWeight.w600,

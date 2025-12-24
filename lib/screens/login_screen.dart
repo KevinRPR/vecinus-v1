@@ -34,8 +34,9 @@ class _LoginScreenState extends State<LoginScreen> {
       final token = data['token'];
       final userJson = data['usuario'];
       final user = User.fromJson(userJson);
-      final sessionExpiration =
-          DateTime.now().add(const Duration(minutes: 10));
+      final sessionExpiration = _extractSessionExpiration(data) ??
+          user.sessionExpiresAt ??
+          DateTime.now().add(const Duration(hours: 2));
       final sessionUser = user.copyWith(sessionExpiresAt: sessionExpiration);
 
       await AuthService.saveSession(token, sessionUser.toJson());
@@ -84,6 +85,19 @@ class _LoginScreenState extends State<LoginScreen> {
             const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       ),
     );
+  }
+
+  DateTime? _extractSessionExpiration(Map<String, dynamic> data) {
+    final raw =
+        data['expires_at'] ?? data['token_expires_at'] ?? data['session_expires_at'];
+    if (raw is String && raw.isNotEmpty) {
+      return DateTime.tryParse(raw);
+    }
+    if (raw is int) {
+      final isMillis = raw > 2000000000;
+      return DateTime.fromMillisecondsSinceEpoch(isMillis ? raw : raw * 1000);
+    }
+    return null;
   }
 
   @override

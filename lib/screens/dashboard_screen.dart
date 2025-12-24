@@ -13,6 +13,7 @@ class DashboardScreen extends StatelessWidget {
   final bool loading;
   final Future<void> Function() onRefresh;
   final VoidCallback onViewPayments;
+  final DateTime? lastSync;
 
   const DashboardScreen({
     super.key,
@@ -21,6 +22,7 @@ class DashboardScreen extends StatelessWidget {
     required this.loading,
     required this.onRefresh,
     required this.onViewPayments,
+    this.lastSync,
   });
 
   double get _totalDeuda => inmuebles.fold(
@@ -68,8 +70,8 @@ class DashboardScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
-    final cardColor = isDark ? theme.cardColor : const Color(0xfff0f1f6);
-    final shadowColor = Colors.black.withOpacity(isDark ? 0.25 : 0.06);
+    final cardColor = isDark ? theme.cardColor : const Color(0xffeef2f8);
+    final shadowColor = Colors.black.withOpacity(isDark ? 0.2 : 0.05);
     final textMuted = isDark ? Colors.grey.shade400 : Colors.grey.shade600;
     final onSurface = theme.colorScheme.onSurface;
 
@@ -79,7 +81,7 @@ class DashboardScreen extends StatelessWidget {
         title: const Text('Resumen'),
         centerTitle: true,
       ),
-      body: loading
+      body: loading && inmuebles.isEmpty
           ? _loadingSkeleton(cardColor)
           : RefreshIndicator(
               onRefresh: onRefresh,
@@ -106,6 +108,22 @@ class DashboardScreen extends StatelessWidget {
                         style: TextStyle(color: textMuted),
                       ),
                     ),
+                    if (lastSync != null) ...[
+                      const SizedBox(height: 8),
+                      FadeSlideTransition(
+                        beginOffset: const Offset(0, 0.02),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.refresh, size: 16),
+                            const SizedBox(width: 6),
+                            Text(
+                              'Actualizado: ${_formatLastSync(lastSync!)}',
+                              style: TextStyle(color: textMuted, fontSize: 12),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 24),
                     FadeSlideTransition(
                       beginOffset: const Offset(0, 0.06),
@@ -412,5 +430,15 @@ class DashboardScreen extends StatelessWidget {
 
   String _formatCurrency(double value) {
     return '\$${value.toStringAsFixed(2)}';
+  }
+
+  String _formatLastSync(DateTime value) {
+    final now = DateTime.now();
+    final isToday =
+        value.year == now.year && value.month == now.month && value.day == now.day;
+    final two = (int n) => n.toString().padLeft(2, '0');
+    final time = '${two(value.hour)}:${two(value.minute)}';
+    if (isToday) return 'Hoy $time';
+    return '${two(value.day)}/${two(value.month)} $time';
   }
 }

@@ -88,7 +88,7 @@ class _PaymentDetailScreenState extends State<PaymentDetailScreen> {
           IconButton(
             icon: const Icon(Icons.history),
             tooltip: 'Historial pagado',
-            onPressed: _showHistorialPagado,
+            onPressed: () => _openHistorialPagado(context),
           )
         ],
       ),
@@ -136,47 +136,6 @@ class _PaymentDetailScreenState extends State<PaymentDetailScreen> {
               _facturaDeudaCard(context, cardColor, shadow, muted),
             const SizedBox(height: 20),
             Text(
-              'Historial de pagadas',
-              style: theme.textTheme.titleMedium,
-            ),
-            const SizedBox(height: 12),
-            if (_pagosPagados.isEmpty)
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: cardColor,
-                  borderRadius: BorderRadius.circular(14),
-                  boxShadow: [
-                    BoxShadow(
-                      color: shadow,
-                      blurRadius: 10,
-                      offset: const Offset(0, 6),
-                    ),
-                  ],
-                ),
-                child: Text(
-                  'Aun no hay pagos registrados como pagados.',
-                  style: TextStyle(color: muted),
-                ),
-              )
-            else
-              Column(
-                children: _pagosPagados
-                    .map((pago) => _pagoTile(
-                          context,
-                          pago,
-                          cardColor,
-                          shadow,
-                          muted,
-                          const _PagoBadge(
-                            label: 'Pagada',
-                            color: Color(0xff16a34a),
-                          ),
-                        ))
-                    .toList(),
-              ),
-            const SizedBox(height: 24),
-            Text(
               'Pagos reportados',
               style: theme.textTheme.titleMedium,
             ),
@@ -188,31 +147,20 @@ class _PaymentDetailScreenState extends State<PaymentDetailScreen> {
     );
   }
 
-  void _showHistorialPagado() {
+  void _openHistorialPagado(BuildContext context) {
     if (_pagosPagados.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('No hay historial pagado.')),
       );
       return;
     }
-    showModalBottomSheet(
-      context: context,
-      showDragHandle: true,
-      builder: (ctx) {
-        return ListView.builder(
-          padding: const EdgeInsets.all(16),
-          itemCount: _pagosPagados.length,
-          itemBuilder: (_, i) {
-            final pago = _pagosPagados[i];
-            return ListTile(
-              leading: const Icon(Icons.check_circle, color: Color(0xff16a34a)),
-              title: Text(pago.descripcion ?? 'Pago'),
-              subtitle: Text(pago.fecha ?? pago.fechaEmision ?? '--'),
-              trailing: Text('\$${pago.monto ?? '--'}'),
-            );
-          },
-        );
-      },
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => _HistorialPagadoScreen(
+          pagos: _pagosPagados,
+          inmueble: widget.inmueble,
+        ),
+      ),
     );
   }
 
@@ -606,104 +554,6 @@ class _PaymentDetailScreenState extends State<PaymentDetailScreen> {
     );
   }
 
-  Widget _pagoTile(
-    BuildContext context,
-    Pago pago,
-    Color cardColor,
-    Color shadow,
-    Color muted,
-    _PagoBadge badge,
-  ) {
-    return InkWell(
-      onTap: () => _openDocument(context, pago),
-      borderRadius: BorderRadius.circular(14),
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 12),
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: cardColor,
-          borderRadius: BorderRadius.circular(14),
-          boxShadow: [
-            BoxShadow(
-              color: shadow,
-              blurRadius: 12,
-              offset: const Offset(0, 6),
-            ),
-          ],
-        ),
-        child: Row(
-          children: [
-            Container(
-              height: 42,
-              width: 42,
-              decoration: BoxDecoration(
-                color: const Color(0xffe0f2fe),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: const Icon(Icons.receipt_long, color: Color(0xff0ea5e9)),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    pago.descripcion ?? 'Pago',
-                    style: const TextStyle(fontWeight: FontWeight.w600),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    pago.fecha ?? pago.fechaEmision ?? pago.fechaVencimiento ?? '--',
-                    style: TextStyle(color: muted, fontSize: 12),
-                  ),
-                  const SizedBox(height: 4),
-                  Row(
-                    children: [
-                      Container(
-                        padding:
-                            const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: badge.color.withOpacity(0.12),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Text(
-                          badge.label,
-                          style: TextStyle(
-                            color: badge.color,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Flexible(
-                        child: Text(
-                          'Ver documento',
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color: badge.color,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 12),
-            Text(
-              '\$${pago.monto ?? '--'}',
-              style: const TextStyle(
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   void _reportarPago(BuildContext context) {
     Navigator.of(context).push(
       MaterialPageRoute(
@@ -801,6 +651,205 @@ class _PaymentDetailScreenState extends State<PaymentDetailScreen> {
   DateTime _today() {
     final now = DateTime.now();
     return DateTime(now.year, now.month, now.day);
+  }
+
+  Future<void> _openDocument(BuildContext context, Pago pago) async {
+    final url = _pickDocumentUrl(pago);
+    if (url == null || url.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No hay documento disponible para este pago.')),
+      );
+      return;
+    }
+    final uri = Uri.parse(url);
+    final openedExternal = await launchUrl(
+      uri,
+      mode: LaunchMode.externalApplication,
+    );
+    if (openedExternal) return;
+
+    final openedInApp = await launchUrl(
+      uri,
+      mode: LaunchMode.inAppBrowserView,
+    );
+    if (openedInApp) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('No se pudo abrir el documento.')),
+    );
+  }
+
+  String? _pickDocumentUrl(Pago pago) {
+    if (pago.documentoUrl != null && pago.documentoUrl!.trim().isNotEmpty) {
+      return pago.documentoUrl!.trim();
+    }
+    if (pago.reciboUrl != null && pago.reciboUrl!.trim().isNotEmpty) {
+      return pago.reciboUrl!.trim();
+    }
+    if (pago.notificacionUrl != null &&
+        pago.notificacionUrl!.trim().isNotEmpty) {
+      return pago.notificacionUrl!.trim();
+    }
+    if (pago.token != null && pago.token!.trim().isNotEmpty) {
+      final base = ApiService.baseRoot.endsWith('/')
+          ? ApiService.baseRoot
+          : '${ApiService.baseRoot}/';
+      return '${base}sys/generar_notificacion.php?token=${pago.token}';
+    }
+    if (pago.id.isNotEmpty) {
+      final base = ApiService.baseRoot.endsWith('/')
+          ? ApiService.baseRoot
+          : '${ApiService.baseRoot}/';
+      return '${base}sys/generar_notificacion.php?id_notificacion=${pago.id}';
+    }
+    return null;
+  }
+}
+
+class _HistorialPagadoScreen extends StatelessWidget {
+  final List<Pago> pagos;
+  final Inmueble inmueble;
+
+  const _HistorialPagadoScreen({
+    required this.pagos,
+    required this.inmueble,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cardColor = theme.cardColor;
+    final shadow =
+        Colors.black.withOpacity(theme.brightness == Brightness.dark ? 0.3 : 0.08);
+    final muted =
+        theme.textTheme.bodyMedium?.color?.withOpacity(0.65) ?? Colors.grey;
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Historial de pagadas'),
+        centerTitle: true,
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(24),
+          child: Padding(
+            padding: const EdgeInsets.only(bottom: 8.0),
+            child: Text(
+              inmueble.identificacion ?? 'Inmueble',
+              style: TextStyle(
+                color: theme.textTheme.bodySmall?.color?.withOpacity(0.8),
+                fontSize: 12,
+              ),
+            ),
+          ),
+        ),
+      ),
+      body: pagos.isEmpty
+          ? Center(
+              child: Text(
+                'Aun no hay pagos registrados como pagados.',
+                style: TextStyle(color: muted),
+              ),
+            )
+          : ListView.separated(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.all(20),
+              itemCount: pagos.length,
+              separatorBuilder: (_, __) => const SizedBox(height: 12),
+              itemBuilder: (_, index) {
+                final pago = pagos[index];
+                final monto = _parseMonto(pago.monto);
+                const moneda = 'USD';
+                final fecha =
+                    pago.fecha ?? pago.fechaEmision ?? pago.fechaVencimiento ?? '--';
+                return InkWell(
+                  onTap: () => _openDocument(context, pago),
+                  borderRadius: BorderRadius.circular(14),
+                  child: Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: cardColor,
+                      borderRadius: BorderRadius.circular(14),
+                      boxShadow: [
+                        BoxShadow(
+                          color: shadow,
+                          blurRadius: 12,
+                          offset: const Offset(0, 6),
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          height: 42,
+                          width: 42,
+                          decoration: BoxDecoration(
+                            color: const Color(0xffe0f2fe),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: const Icon(Icons.check_circle, color: Color(0xff16a34a)),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                pago.descripcion ?? 'Pago',
+                                style: const TextStyle(fontWeight: FontWeight.w600),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(fecha, style: TextStyle(color: muted, fontSize: 12)),
+                              const SizedBox(height: 8),
+                              Container(
+                                padding:
+                                    const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xff16a34a).withOpacity(0.12),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: const Text(
+                                  'Pagada',
+                                  style: TextStyle(
+                                    color: Color(0xff16a34a),
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Text(
+                              '${monto.toStringAsFixed(2)} $moneda',
+                              style: const TextStyle(fontWeight: FontWeight.w700),
+                            ),
+                            TextButton.icon(
+                              onPressed: () => _openDocument(context, pago),
+                              icon: const Icon(Icons.picture_as_pdf, size: 16),
+                              label: const Text('Documento'),
+                              style: TextButton.styleFrom(
+                                padding: EdgeInsets.zero,
+                                minimumSize: const Size(0, 32),
+                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+    );
+  }
+
+  double _parseMonto(dynamic raw) {
+    if (raw is num) return raw.toDouble();
+    return double.tryParse(raw?.toString().replaceAll(',', '.') ?? '') ?? 0;
   }
 
   Future<void> _openDocument(BuildContext context, Pago pago) async {

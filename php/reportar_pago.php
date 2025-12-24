@@ -170,7 +170,8 @@ function ensure_columns(PDO $conn): void
             ADD COLUMN IF NOT EXISTS ip INET NULL,
             ADD COLUMN IF NOT EXISTS user_agent TEXT NULL,
             ADD COLUMN IF NOT EXISTS evidencia_path TEXT NULL,
-            ADD COLUMN IF NOT EXISTS evidencia_url TEXT NULL;
+            ADD COLUMN IF NOT EXISTS evidencia_url TEXT NULL,
+            ADD COLUMN IF NOT EXISTS tasa_dia NUMERIC(18,6) NULL;
     ");
     $conn->exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_pra_client_uuid ON pago_reportado_app (client_uuid)");
     $conn->exec("CREATE INDEX IF NOT EXISTS idx_pra_estado ON pago_reportado_app (estado)");
@@ -339,6 +340,7 @@ try {
         }
 
         $totalPagosBase = 0;
+        $tasaDia = null;
         foreach ($pagos as $p) {
             $monto = (float)($p["monto"] ?? 0);
             $idMon = (int)($p["id_moneda"] ?? 0);
@@ -347,7 +349,14 @@ try {
             }
             $tasa = (float)($p["tasa"] ?? get_tasa($conn, $idMon, $idMonedaBase));
             if ($tasa <= 0) $tasa = 1;
-            $totalPagosBase += $monto * $tasa;
+            if ($tasaDia === null) {
+                $tasaDia = $tasa;
+            }
+            // El cliente envía el monto en la moneda de la cuenta; usamos la tasa para traerlo a moneda base.
+            $totalPagosBase += $monto / $tasa;
+        }
+        if ($tasaDia === null) {
+            $tasaDia = 1.0;
         }
 
         $comprobanteBase64 = $input["comprobante_base64"] ?? null;
@@ -362,8 +371,8 @@ try {
 
         $stmt = $conn->prepare("
             INSERT INTO pago_reportado_app
-            (id_usuario, id_inmueble, id_condominio, fecha_pago, observacion, total_base, moneda_base, detalle, estado, client_uuid, ip, user_agent, evidencia_path, evidencia_url, updated_at)
-            VALUES (:usr, :inm, :condo, :fecha, :obs, :total_base, :moneda_base, :detalle::jsonb, 'EN_PROCESO', :client_uuid, :ip, :ua, :evid_path, :evid_url, NOW())
+            (id_usuario, id_inmueble, id_condominio, fecha_pago, observacion, total_base, moneda_base, detalle, estado, client_uuid, ip, user_agent, evidencia_path, evidencia_url, tasa_dia, updated_at)
+            VALUES (:usr, :inm, :condo, :fecha, :obs, :total_base, :moneda_base, :detalle::jsonb, 'EN_PROCESO', :client_uuid, :ip, :ua, :evid_path, :evid_url, :tasa_dia, NOW())
             RETURNING id, created_at, estado, client_uuid, evidencia_url
         ");
 
@@ -396,6 +405,7 @@ try {
             ":ua" => $_SERVER["HTTP_USER_AGENT"] ?? null,
             ":evid_path" => $evidPath,
             ":evid_url" => $evidUrl,
+            ":tasa_dia" => $tasaDia,
         ]);
 
         $inserted = $stmt->fetch(PDO::FETCH_ASSOC);

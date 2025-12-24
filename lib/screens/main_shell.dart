@@ -1,4 +1,7 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/inmueble.dart';
 import '../models/user.dart';
@@ -27,6 +30,8 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
   DateTime? _lastFetch;
   static const double _floatingNavHeight = 90;
   static const Duration _staleAfter = Duration(seconds: 30);
+  static const _cacheInmueblesKey = 'cache_inmuebles';
+  static const _cacheFetchKey = 'cache_inmuebles_fetched_at';
 
   @override
   void initState() {
@@ -34,7 +39,7 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     _currentUser = widget.user;
     _pageController = PageController();
-    _loadInmuebles();
+    _restoreCachedInmuebles().then((_) => _loadInmuebles());
   }
 
   @override
@@ -52,7 +57,7 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
   }
 
   Future<void> _loadInmuebles() async {
-    setState(() => _loadingData = true);
+    setState(() => _loadingData = _inmuebles.isEmpty);
     try {
       final data = await ApiService.getMisInmuebles(widget.token);
       if (!mounted) return;
@@ -61,6 +66,7 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
         _loadingData = false;
         _lastFetch = DateTime.now();
       });
+      await _persistCache(data, _lastFetch!);
     } catch (e) {
       if (!mounted) return;
       setState(() => _loadingData = false);
@@ -68,6 +74,35 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
         SnackBar(content: Text('No se pudieron cargar los inmuebles: $e')),
       );
     }
+  }
+
+  Future<void> _restoreCachedInmuebles() async {
+    final prefs = await SharedPreferences.getInstance();
+    final rawList = prefs.getString(_cacheInmueblesKey);
+    if (rawList != null) {
+      try {
+        final List decoded = jsonDecode(rawList);
+        final inmuebles =
+            decoded.whereType<Map<String, dynamic>>().map(Inmueble.fromJson).toList();
+        final fetchedAt = DateTime.tryParse(prefs.getString(_cacheFetchKey) ?? '');
+        if (!mounted) return;
+        setState(() {
+          _inmuebles = inmuebles;
+          _lastFetch = fetchedAt;
+          _loadingData = false;
+        });
+      } catch (_) {
+        // ignore cache errors
+      }
+    }
+  }
+
+  Future<void> _persistCache(List<Inmueble> items, DateTime fetchedAt) async {
+    final prefs = await SharedPreferences.getInstance();
+    final encoded =
+        items.map((i) => i.toJson()).toList(growable: false);
+    await prefs.setString(_cacheInmueblesKey, jsonEncode(encoded));
+    await prefs.setString(_cacheFetchKey, fetchedAt.toIso8601String());
   }
 
   void _maybeRefreshData() {
@@ -105,12 +140,14 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
         loading: _loadingData,
         onRefresh: _loadInmuebles,
         onViewPayments: () => _onTabSelected(1),
+        lastSync: _lastFetch,
       ),
       PaymentsScreen(
         inmuebles: _inmuebles,
         loading: _loadingData,
         onRefresh: _loadInmuebles,
         token: widget.token,
+        lastSync: _lastFetch,
       ),
       NotificationsScreen(token: widget.token),
       UserScreen(
