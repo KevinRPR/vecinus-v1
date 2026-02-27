@@ -16,13 +16,14 @@ dependencies:
   flutter_hooks: ^0.20.5
   provider: ^6.1.2
   cupertino_icons: ^1.0.8
-  google_fonts: ^6.2.1
   shimmer: ^3.0.0
   lottie: ^3.1.0
   flutter_staggered_animations: ^1.1.1
   animated_list_plus: ^0.5.0
   rive: ^0.13.4
   url_launcher: ^6.3.0
+  local_auth: ^2.2.0
+  flutter_secure_storage: ^9.2.2
 
 dev_dependencies:
   flutter_test:
@@ -36,3 +37,16 @@ flutter:
     - assets/images/
     - assets/icons/
     - assets/animations/
+    - lib/assets/
+
+  fonts:
+    - family: TT Hoves Pro Trial
+      fonts:
+        - asset: lib/assets/fonts/TT Hoves Pro Trial Regular.ttf
+          weight: 400
+        - asset: lib/assets/fonts/TT Hoves Pro Trial Medium.ttf
+          weight: 500
+        - asset: lib/assets/fonts/TT Hoves Pro Trial Bold.ttf
+          weight: 700
+        - asset: lib/assets/fonts/TT Hoves Pro Trial Black.ttf
+          weight: 900

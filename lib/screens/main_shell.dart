@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -6,10 +7,20 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/inmueble.dart';
 import '../models/user.dart';
 import '../services/api_service.dart';
+import '../services/notification_service.dart';
+import '../preferences_controller.dart';
 import 'dashboard_screen.dart';
 import 'notifications_screen.dart';
 import 'payments_screen.dart';
 import 'user_screen.dart';
+
+const _navPrimary = Color(0xff548C8C);
+const _navBackgroundLight = Color(0xCCFFFFFF);
+const _navBackgroundDark = Color(0xCC0F172A);
+const _navBorderLight = Color(0xffE2E8F0);
+const _navBorderDark = Color(0xff1F2937);
+const _navMutedLight = Color(0xff94A3B8);
+const _navMutedDark = Color(0xff64748B);
 
 class MainShell extends StatefulWidget {
   final User user;
@@ -27,9 +38,10 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
   late final PageController _pageController;
   List<Inmueble> _inmuebles = [];
   bool _loadingData = true;
+  bool _refreshing = false;
   DateTime? _lastFetch;
-  static const double _floatingNavHeight = 90;
-  static const Duration _staleAfter = Duration(seconds: 30);
+  static const double _floatingNavHeight = 72;
+  static const bool _useCache = false;
   static const _cacheInmueblesKey = 'cache_inmuebles';
   static const _cacheFetchKey = 'cache_inmuebles_fetched_at';
 
@@ -39,7 +51,13 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     _currentUser = widget.user;
     _pageController = PageController();
-    _restoreCachedInmuebles().then((_) => _loadInmuebles());
+    if (_useCache) {
+      _restoreCachedInmuebles().then((_) => _loadInmuebles());
+    } else {
+      _clearInmueblesCache();
+      _loadInmuebles();
+    }
+    preferencesController.loadForUser(widget.user.id);
   }
 
   @override
@@ -57,6 +75,8 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
   }
 
   Future<void> _loadInmuebles() async {
+    if (_refreshing) return;
+    _refreshing = true;
     setState(() => _loadingData = _inmuebles.isEmpty);
     try {
       final data = await ApiService.getMisInmuebles(widget.token);
@@ -66,13 +86,17 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
         _loadingData = false;
         _lastFetch = DateTime.now();
       });
-      await _persistCache(data, _lastFetch!);
+      if (_useCache) {
+        await _persistCache(data, _lastFetch!);
+      }
     } catch (e) {
       if (!mounted) return;
       setState(() => _loadingData = false);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('No se pudieron cargar los inmuebles: $e')),
       );
+    } finally {
+      _refreshing = false;
     }
   }
 
@@ -97,6 +121,12 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
     }
   }
 
+  Future<void> _clearInmueblesCache() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_cacheInmueblesKey);
+    await prefs.remove(_cacheFetchKey);
+  }
+
   Future<void> _persistCache(List<Inmueble> items, DateTime fetchedAt) async {
     final prefs = await SharedPreferences.getInstance();
     final encoded =
@@ -106,15 +136,12 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
   }
 
   void _maybeRefreshData() {
-    final now = DateTime.now();
-    if (_lastFetch == null ||
-        (!_loadingData && now.difference(_lastFetch!) > _staleAfter)) {
-      _loadInmuebles();
-    }
+    _loadInmuebles();
   }
 
   void _handleUserUpdated(User user) {
     setState(() => _currentUser = user);
+    preferencesController.loadForUser(user.id);
   }
 
   void _onTabSelected(int index) {
@@ -132,7 +159,7 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     final bottomInset = MediaQuery.of(context).viewPadding.bottom;
-    final navOverlapPadding = _floatingNavHeight + bottomInset + 16;
+    final navOverlapPadding = _floatingNavHeight + bottomInset;
     final pages = [
       DashboardScreen(
         user: _currentUser,
@@ -140,6 +167,7 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
         loading: _loadingData,
         onRefresh: _loadInmuebles,
         onViewPayments: () => _onTabSelected(1),
+        onViewAlerts: () => _onTabSelected(2),
         lastSync: _lastFetch,
       ),
       PaymentsScreen(
@@ -153,6 +181,7 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
       UserScreen(
         user: _currentUser,
         token: widget.token,
+        inmuebles: _inmuebles,
         embedded: true,
         onUserUpdated: _handleUserUpdated,
       ),
@@ -175,7 +204,7 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
   }
 
   Widget _buildBottomNavigation() {
-    final items = [
+    const items = [
       _NavItem(icon: Icons.home_rounded, label: 'Inicio'),
       _NavItem(icon: Icons.account_balance_wallet_outlined, label: 'Pagos'),
       _NavItem(icon: Icons.notifications_none_rounded, label: 'Alertas'),
@@ -183,82 +212,92 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
     ];
 
     final theme = Theme.of(context);
-    final onSurface = theme.colorScheme.onSurface;
-    return SafeArea(
-      minimum: const EdgeInsets.only(bottom: 16),
-      child: SizedBox(
-        height: _floatingNavHeight,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Material(
-            color: Colors.transparent,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              decoration: BoxDecoration(
-                color: theme.cardColor,
-                borderRadius: BorderRadius.circular(30),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(
-                        theme.brightness == Brightness.dark ? 0.4 : 0.07),
-                    blurRadius: 24,
-                    offset: const Offset(0, 16),
-                  ),
-                ],
-              ),
-              child: Row(
-                children: List.generate(items.length, (index) {
-                  final selected = _currentIndex == index;
-                  final item = items[index];
+    final isDark = theme.brightness == Brightness.dark;
+    final muted = isDark ? _navMutedDark : _navMutedLight;
+    final background = isDark ? _navBackgroundDark : _navBackgroundLight;
+    final borderColor = isDark ? _navBorderDark : _navBorderLight;
+    final bottomInset = MediaQuery.of(context).viewPadding.bottom;
+    final hasAlerts = NotificationService.all().isNotEmpty;
+    final dotBorderColor = isDark ? _navBorderDark : Colors.white;
 
-                  return Expanded(
-                    child: GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: () => _onTabSelected(index),
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 220),
-                        curve: Curves.easeOut,
-                        padding: const EdgeInsets.symmetric(vertical: 4),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
+    return ClipRect(
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+        child: Container(
+          padding: EdgeInsets.fromLTRB(24, 10, 24, 10 + bottomInset),
+          decoration: BoxDecoration(
+            color: background,
+            border: Border(top: BorderSide(color: borderColor)),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: List.generate(items.length, (index) {
+              final selected = _currentIndex == index;
+              final item = items[index];
+              final iconColor = selected ? Colors.white : muted;
+              final labelColor = selected ? _navPrimary : muted;
+
+              return Expanded(
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => _onTabSelected(index),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      AnimatedContainer(
+                        duration: const Duration(milliseconds: 200),
+                        padding: const EdgeInsets.all(8),
+                        decoration: selected
+                            ? BoxDecoration(
+                                color: _navPrimary,
+                                borderRadius: BorderRadius.circular(14),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: _navPrimary.withValues(alpha: 0.3),
+                                    blurRadius: 16,
+                                    offset: const Offset(0, 6),
+                                  ),
+                                ],
+                              )
+                            : null,
+                        child: Stack(
+                          clipBehavior: Clip.none,
                           children: [
-                            AnimatedContainer(
-                              duration: const Duration(milliseconds: 220),
-                              padding:
-                                  selected ? const EdgeInsets.all(8) : const EdgeInsets.all(6),
-                              decoration: selected
-                                  ? const BoxDecoration(
-                                      color: Color(0xff1d9bf0),
-                                      shape: BoxShape.circle,
-                                    )
-                                  : null,
-                              child: Icon(
-                                item.icon,
-                                color: selected
-                                    ? Colors.white
-                                    : onSurface.withOpacity(0.55),
+                            Icon(item.icon, color: iconColor, size: 22),
+                            if (index == 2 && hasAlerts)
+                              Positioned(
+                                top: -2,
+                                right: -2,
+                                child: Container(
+                                  width: 8,
+                                  height: 8,
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xffEF4444),
+                                    shape: BoxShape.circle,
+                                    border: Border.all(
+                                      color: dotBorderColor,
+                                      width: 1.5,
+                                    ),
+                                  ),
+                                ),
                               ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              item.label,
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: selected
-                                    ? onSurface
-                                    : onSurface.withOpacity(0.55),
-                                fontWeight:
-                                    selected ? FontWeight.w600 : FontWeight.w500,
-                              ),
-                            ),
                           ],
                         ),
                       ),
-                    ),
-                  );
-                }),
-              ),
-            ),
+                      const SizedBox(height: 4),
+                      Text(
+                        item.label,
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w700,
+                          color: labelColor,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            }),
           ),
         ),
       ),

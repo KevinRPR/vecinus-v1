@@ -33,7 +33,7 @@ class ApiService {
       body: jsonEncode({'email': email, 'password': password}),
     );
 
-    final data = jsonDecode(response.body);
+    final data = _decodeResponse(response);
 
     if (response.statusCode == 200 && data['success'] == true) {
       return data;
@@ -49,7 +49,7 @@ class ApiService {
       body: jsonEncode({'token': token}),
     );
 
-    final data = jsonDecode(response.body);
+    final data = _decodeResponse(response);
 
     if (response.statusCode == 200 && data['success'] == true) {
       final List lista = data['inmuebles'];
@@ -110,7 +110,7 @@ class ApiService {
       }),
     );
 
-    final data = jsonDecode(response.body);
+    final data = _decodeResponse(response);
     if (response.statusCode == 200 && data['success'] == true) {
       return data['avatar_url'] as String?;
     }
@@ -131,7 +131,7 @@ class ApiService {
         'id_inmueble': inmuebleId,
       }),
     );
-    final data = jsonDecode(response.body);
+    final data = _decodeResponse(response);
     if (response.statusCode == 200 && data['success'] == true) {
       return data;
     }
@@ -169,7 +169,7 @@ class ApiService {
         if (comprobanteExt != null) 'comprobante_ext': comprobanteExt,
       }),
     );
-    final data = jsonDecode(response.body);
+    final data = _decodeResponse(response);
     if (response.statusCode == 200 && data['success'] == true) {
       return data;
     }
@@ -189,7 +189,7 @@ class ApiService {
       headers: _headers,
       body: jsonEncode(payload),
     );
-    final data = jsonDecode(response.body);
+    final data = _decodeResponse(response);
     if (response.statusCode == 200 && data['success'] == true) {
       final List lista = data['reportes'] ?? [];
       return lista
@@ -209,7 +209,7 @@ class ApiService {
       headers: _headers,
       body: jsonEncode(payload),
     );
-    final data = jsonDecode(response.body);
+    final data = _decodeResponse(response);
 
     if (response.statusCode == 200 && data['success'] == true) {
       if (expectUser) {
@@ -220,4 +220,29 @@ class ApiService {
 
     throw Exception(data['error'] ?? 'Error de perfil');
   }
+
+  static Map<String, dynamic> _decodeResponse(http.Response response) {
+    final body = response.body;
+    try {
+      final decoded = jsonDecode(body);
+      if (decoded is Map<String, dynamic>) {
+        return decoded;
+      }
+      throw const FormatException('Respuesta JSON inesperada');
+    } on FormatException {
+      final trimmed = body.trimLeft().toLowerCase();
+      if (trimmed.startsWith('<!doctype') || trimmed.startsWith('<html')) {
+        if (trimmed.contains('cloudflare')) {
+          throw Exception(
+            'Cloudflare está bloqueando la app. Permite el endpoint en el WAF o usa un subdominio de API sin challenge.',
+          );
+        }
+        throw Exception(
+          'El servidor devolvió HTML en lugar de JSON. Revisa el endpoint o la configuración del servidor.',
+        );
+      }
+      throw Exception('Respuesta inválida del servidor.');
+    }
+  }
+
 }

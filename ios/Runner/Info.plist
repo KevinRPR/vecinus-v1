@@ -51,5 +51,7 @@
 	<string>Necesitamos usar la camara para tomar una foto de perfil.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>Necesitamos guardar tu nueva foto de perfil.</string>
+	<key>NSFaceIDUsageDescription</key>
+	<string>Necesitamos usar Face ID para autenticar tu identidad.</string>
 </dict>
 </plist>

@@ -7,17 +7,25 @@ import 'package:image_picker/image_picker.dart';
 import '../models/inmueble.dart';
 import '../services/api_service.dart';
 import '../services/notification_service.dart';
+import '../theme/app_theme.dart';
+
+typedef PreparePagoReporteLoader = Future<Map<String, dynamic>> Function({
+  required String token,
+  required String inmuebleId,
+});
 
 enum _ReportStep { amount, selectBank, bankDetails, form, success }
 
 class ReportPaymentScreen extends StatefulWidget {
   final String token;
   final Inmueble inmueble;
+  final PreparePagoReporteLoader? prepareLoader;
 
   const ReportPaymentScreen({
     super.key,
     required this.token,
     required this.inmueble,
+    this.prepareLoader,
   });
 
   @override
@@ -42,7 +50,6 @@ class _ReportPaymentScreenState extends State<ReportPaymentScreen> {
   String? _evidenceBase64;
   String? _evidenceExt;
   String? _evidenceName;
-  int? _monedaBase;
   String? _formError;
 
   @override
@@ -66,15 +73,13 @@ class _ReportPaymentScreenState extends State<ReportPaymentScreen> {
       _error = null;
     });
     try {
-      final res = await ApiService.preparePagoReporte(
+      final loader = widget.prepareLoader ?? ApiService.preparePagoReporte;
+      final res = await loader(
         token: widget.token,
         inmuebleId: widget.inmueble.idInmueble,
       );
       setState(() {
         _data = res;
-        _monedaBase = res['moneda_base'] is int
-            ? res['moneda_base'] as int
-            : int.tryParse(res['moneda_base']?.toString() ?? '');
         _loading = false;
         if (_payFull) {
           _applyFullAmount();
@@ -124,7 +129,22 @@ class _ReportPaymentScreenState extends State<ReportPaymentScreen> {
   double get _montoUsd =>
       double.tryParse(_montoUsdCtrl.text.replaceAll(',', '.')) ?? 0;
 
-  double get _montoLocal => _montoUsd / _tasaCuenta;
+  double get _montoLocal => _calculateMontoLocal(
+        montoUsd: _montoUsd,
+        cuentaEsVes: _cuentaEsVes,
+        tasa: _tasaCuenta,
+      );
+
+  double _calculateMontoLocal({
+    required double montoUsd,
+    required bool cuentaEsVes,
+    required double tasa,
+  }) {
+    if (montoUsd <= 0) return 0;
+    if (!cuentaEsVes) return montoUsd;
+    final safeTasa = tasa <= 0 ? 1 : tasa;
+    return montoUsd * safeTasa;
+  }
 
   void _applyFullAmount() {
     if (_totalPendienteBase > 0) {
@@ -240,7 +260,11 @@ class _ReportPaymentScreenState extends State<ReportPaymentScreen> {
       return;
     }
     final montoUsd = _montoUsd;
-    final montoLocal = _cuentaEsVes ? montoUsd * _tasaCuenta : montoUsd;
+    final montoLocal = _calculateMontoLocal(
+      montoUsd: montoUsd,
+      cuentaEsVes: _cuentaEsVes,
+      tasa: _tasaCuenta,
+    );
     if (montoLocal <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Ingresa un monto valido.')),
@@ -286,6 +310,7 @@ class _ReportPaymentScreenState extends State<ReportPaymentScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Este pago ya fue reportado.')),
         );
+        return;
       }
       await _goToSuccess();
     } catch (e) {
@@ -302,13 +327,13 @@ class _ReportPaymentScreenState extends State<ReportPaymentScreen> {
   Widget build(BuildContext context) {
     if (_loading && _data == null) {
       return Scaffold(
-        appBar: AppBar(title: const Text('Pagar')),
+        appBar: AppBar(title: const Text('Reportar pago')),
         body: const Center(child: CircularProgressIndicator()),
       );
     }
     if (_error != null) {
       return Scaffold(
-        appBar: AppBar(title: const Text('Pagar')),
+        appBar: AppBar(title: const Text('Reportar pago')),
         body: Center(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -324,7 +349,7 @@ class _ReportPaymentScreenState extends State<ReportPaymentScreen> {
 
     final resumen = _buildSummaryBar();
     return Scaffold(
-      appBar: AppBar(title: const Text('Pagar')),
+      appBar: AppBar(title: const Text('Reportar pago')),
       body: Stack(
         children: [
           Column(
@@ -341,7 +366,7 @@ class _ReportPaymentScreenState extends State<ReportPaymentScreen> {
           if (_loading)
             Positioned.fill(
               child: Container(
-                color: Colors.black.withOpacity(0.05),
+                color: Colors.black.withValues(alpha: 0.05),
                 child: const Center(child: CircularProgressIndicator()),
               ),
             ),
@@ -388,7 +413,6 @@ class _ReportPaymentScreenState extends State<ReportPaymentScreen> {
         return _PaymentFormStep(
           cuenta: cuenta,
           fechaPago: _fechaPago,
-          pendientes: _pendientes,
           obsCtrl: _obsCtrl,
           refCtrl: _refCtrl,
           cuentaEsVes: _cuentaEsVes,
@@ -415,40 +439,47 @@ class _ReportPaymentScreenState extends State<ReportPaymentScreen> {
     final moneda = (cuenta?['moneda'] ?? '').toString();
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
+    final muted =
+        theme.textTheme.bodySmall?.color?.withValues(alpha: 0.7) ?? AppColors.textMuted;
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xff182032) : const Color(0xffe7f1ff),
-        border: Border(
-          bottom: BorderSide(
-            color: isDark ? Colors.white10 : Colors.black12,
-          ),
-        ),
+        color: isDark ? AppColors.darkSurfaceAlt : AppColors.surfaceAlt,
+        border: Border(bottom: BorderSide(color: theme.colorScheme.outline)),
       ),
       child: Row(
         children: [
-          Icon(Icons.summarize, color: theme.colorScheme.primary),
+          Container(
+            height: 36,
+            width: 36,
+            decoration: BoxDecoration(
+              color: AppColors.brandBlue600.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: const Icon(
+              Icons.payments_outlined,
+              color: AppColors.brandBlue600,
+              size: 18,
+            ),
+          ),
           const SizedBox(width: 10),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Monto: \$${_montoUsd.toStringAsFixed(2)}',
-                  style: TextStyle(
+                  'Monto: \$${_formatMoney(_montoUsd)}',
+                  style: theme.textTheme.bodyMedium?.copyWith(
                     fontWeight: FontWeight.w700,
-                    color: theme.colorScheme.onSurface,
+                    fontFeatures: const [FontFeature.tabularFigures()],
                   ),
                 ),
                 Text(
                   cuenta == null
-                      ? 'Sin banco elegido'
+                      ? 'Selecciona un banco'
                       : 'Banco: ${cuenta['banco'] ?? cuenta['nombre']} (${moneda.isEmpty ? 'USD' : moneda})',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: isDark ? Colors.white70 : Colors.black87,
-                  ),
+                  style: theme.textTheme.bodySmall?.copyWith(color: muted),
                 ),
               ],
             ),
@@ -489,6 +520,82 @@ class _ReportPaymentScreenState extends State<ReportPaymentScreen> {
       return null;
     }
   }
+
+  String _formatMoney(double value) => value.toStringAsFixed(2);
+}
+
+class _StepHeader extends StatelessWidget {
+  final String title;
+  final String? subtitle;
+  final int step;
+  final int total;
+  final VoidCallback? onBack;
+
+  const _StepHeader({
+    required this.title,
+    required this.step,
+    required this.total,
+    this.subtitle,
+    this.onBack,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final muted =
+        theme.textTheme.bodySmall?.color?.withValues(alpha: 0.7) ?? AppColors.textMuted;
+    final progress = total > 0 ? step / total : 0.0;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            if (onBack != null)
+              IconButton(
+                icon: const Icon(Icons.arrow_back),
+                onPressed: onBack,
+              ),
+            Expanded(
+              child: Text(
+                title,
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ],
+        ),
+        if (subtitle != null) ...[
+          const SizedBox(height: 2),
+          Text(subtitle!, style: theme.textTheme.bodySmall?.copyWith(color: muted)),
+        ],
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Text(
+              'Paso $step de $total',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: muted,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(6),
+                child: LinearProgressIndicator(
+                  value: progress,
+                  minHeight: 6,
+                  backgroundColor: theme.colorScheme.surfaceContainerHighest,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
 }
 
 class _AmountStep extends StatelessWidget {
@@ -513,84 +620,139 @@ class _AmountStep extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final muted =
+        theme.textTheme.bodySmall?.color?.withValues(alpha: 0.7) ?? AppColors.textMuted;
+    final hasDebt = totalPendienteBase > 0;
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(20),
       children: [
-        Text(
-          'Cuanto deseas pagar?',
-          style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700, fontSize: 18),
+        const _StepHeader(
+          title: 'Monto a reportar',
+          subtitle: 'Indica si el pago es total o parcial.',
+          step: 1,
+          total: 4,
         ),
-        const SizedBox(height: 12),
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text('Deuda total (USD)', style: TextStyle(fontWeight: FontWeight.w700)),
-                const SizedBox(height: 6),
-                Text(
-                  '\$${totalPendienteBase.toStringAsFixed(2)}',
-                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+        const SizedBox(height: 16),
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: theme.cardColor,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: theme.colorScheme.outline),
+            boxShadow: [
+              if (!isDark)
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.06),
+                  blurRadius: 16,
+                  offset: const Offset(0, 8),
                 ),
-              ],
-            ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Deuda total (USD)',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                '\$${totalPendienteBase.toStringAsFixed(2)}',
+                style: theme.textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  fontFeatures: const [FontFeature.tabularFigures()],
+                ),
+              ),
+            ],
           ),
         ),
-        const SizedBox(height: 12),
-        Row(
+        const SizedBox(height: 16),
+        Text(
+          'Selecciona el monto',
+          style: theme.textTheme.titleSmall?.copyWith(
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
           children: [
-            Expanded(
-              child: RadioListTile<bool>(
-                dense: true,
-                contentPadding: EdgeInsets.zero,
-                value: true,
-                groupValue: payFull,
-                title: const Text('Pagar todo'),
-                onChanged: (_) => onPayModeChange(true),
-              ),
+            ChoiceChip(
+              label: const Text('Pago total'),
+              selected: payFull,
+              showCheckmark: false,
+              selectedColor: AppColors.brandBlue600.withValues(alpha: 0.12),
+              onSelected: (_) => onPayModeChange(true),
             ),
-            Expanded(
-              child: RadioListTile<bool>(
-                dense: true,
-                contentPadding: EdgeInsets.zero,
-                value: false,
-                groupValue: payFull,
-                title: const Text('Monto personalizado'),
-                onChanged: (_) => onPayModeChange(false),
-              ),
+            ChoiceChip(
+              label: const Text('Personalizado'),
+              selected: !payFull,
+              showCheckmark: false,
+              selectedColor: AppColors.brandBlue600.withValues(alpha: 0.12),
+              onSelected: (_) => onPayModeChange(false),
             ),
           ],
         ),
+        const SizedBox(height: 12),
         TextField(
           controller: montoUsdCtrl,
           readOnly: payFull,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          decoration: const InputDecoration(
+          decoration: InputDecoration(
             labelText: 'Monto en USD',
+            prefixText: '\$',
             suffixText: 'USD',
+            helperText:
+                payFull ? 'Se usa el total pendiente.' : 'Ingresa el monto en USD.',
+            helperStyle: TextStyle(color: muted),
           ),
           onChanged: (_) => onAmountChanged(),
         ),
-        const SizedBox(height: 16),
-        if (cuentaSeleccionada != null)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 8),
+        const SizedBox(height: 12),
+        if (!hasDebt)
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: isDark
+                  ? AppColors.darkSurfaceAlt
+                  : AppColors.surfaceAlt,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: theme.colorScheme.outline),
+            ),
             child: Row(
               children: [
-                const Icon(Icons.account_balance, size: 18),
-                const SizedBox(width: 6),
+                const Icon(Icons.verified_rounded, color: AppColors.success),
+                const SizedBox(width: 10),
                 Expanded(
                   child: Text(
-                    'Usarás ${cuentaSeleccionada?['banco'] ?? cuentaSeleccionada?['nombre'] ?? 'la cuenta seleccionada'}',
-                    style: const TextStyle(fontSize: 13, color: Colors.grey),
+                    'No hay deuda pendiente en este inmueble.',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: muted,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
               ],
             ),
           ),
+        if (!hasDebt) const SizedBox(height: 12),
+        if (cuentaSeleccionada != null)
+          Row(
+            children: [
+              const Icon(Icons.account_balance_outlined, size: 18),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  'Usaras ${cuentaSeleccionada?['banco'] ?? cuentaSeleccionada?['nombre'] ?? 'la cuenta seleccionada'}',
+                  style: TextStyle(fontSize: 13, color: muted),
+                ),
+              ),
+            ],
+          ),
+        const SizedBox(height: 20),
         ElevatedButton(
-          onPressed: onContinue,
+          onPressed: hasDebt ? onContinue : null,
           child: const Text('Elegir metodo de pago'),
         ),
       ],
@@ -616,71 +778,151 @@ class _SelectBankStep extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final muted =
+        theme.textTheme.bodySmall?.color?.withValues(alpha: 0.7) ?? AppColors.textMuted;
+
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(20),
       children: [
+        _StepHeader(
+          title: 'Metodo de pago',
+          subtitle: 'Elige el banco para reportar tu pago.',
+          step: 2,
+          total: 4,
+          onBack: onBack,
+        ),
+        const SizedBox(height: 12),
         Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            IconButton(
-              icon: const Icon(Icons.arrow_back),
-              onPressed: onBack,
-            ),
             Text(
-              'Elige el metodo de pago',
-              style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700, fontSize: 18),
+              'Monto en USD: \$${amountUsd.toStringAsFixed(2)}',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: muted,
+                fontFeatures: const [FontFeature.tabularFigures()],
+              ),
+            ),
+            TextButton(
+              onPressed: onBackToAmount,
+              child: const Text('Cambiar monto'),
             ),
           ],
         ),
         const SizedBox(height: 8),
-        TextButton(
-          onPressed: onBackToAmount,
-          child: const Text('Cambiar monto'),
-        ),
-        if (amountUsd > 0)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 12),
-            child: Text(
-              'Monto en USD: \$${amountUsd.toStringAsFixed(2)}',
-              style: const TextStyle(color: Colors.grey),
-            ),
-          ),
         if (cuentas.isEmpty)
-          const Text('No hay bancos disponibles.')
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: theme.cardColor,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: theme.colorScheme.outline),
+              boxShadow: [
+                if (!isDark)
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.06),
+                    blurRadius: 16,
+                    offset: const Offset(0, 8),
+                  ),
+              ],
+            ),
+            child: Column(
+              children: [
+                Icon(Icons.account_balance_outlined, color: theme.colorScheme.primary),
+                const SizedBox(height: 8),
+                Text(
+                  'No hay bancos disponibles.',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Contacta a la administracion para agregar uno.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: muted),
+                ),
+              ],
+            ),
+          )
         else
           ...cuentas.map((c) {
             final moneda = (c['moneda'] ?? '').toString();
-            final esVes = moneda.toUpperCase().contains('VES') || moneda.toUpperCase().contains('BS');
+            final esVes = moneda.toUpperCase().contains('VES') ||
+                moneda.toUpperCase().contains('BS');
             final tasa = (c['tasa'] as num?)?.toDouble() ?? 1;
-            final montoLocal = amountUsd > 0 ? (esVes ? amountUsd * tasa : amountUsd) : null;
-            return Container(
-              margin: const EdgeInsets.only(bottom: 12),
-              child: ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 12),
-                  alignment: Alignment.centerLeft,
+            final montoLocal =
+                amountUsd > 0 ? (esVes ? amountUsd * tasa : amountUsd) : null;
+            final banco = c['banco'] ?? c['nombre'] ?? 'Banco';
+            final codigo = (c['codigo_banco'] ?? '').toString();
+
+            return InkWell(
+              onTap: () => onSelect(c['id_cuenta'] as int),
+              borderRadius: BorderRadius.circular(14),
+              child: Container(
+                margin: const EdgeInsets.only(bottom: 12),
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: theme.cardColor,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: theme.colorScheme.outline),
+                  boxShadow: [
+                    if (!isDark)
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.06),
+                        blurRadius: 16,
+                        offset: const Offset(0, 8),
+                      ),
+                  ],
                 ),
-                onPressed: () => onSelect(c['id_cuenta'] as int),
-                child: Column(
+                child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      c['banco'] ?? c['nombre'] ?? 'Banco',
-                      style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 18),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      '${c['codigo_banco'] ?? ''} $moneda',
-                      style: TextStyle(color: Colors.grey.shade700, fontSize: 14),
-                    ),
-                    if (montoLocal != null) ...[
-                      const SizedBox(height: 4),
-                      Text(
-                        esVes
-                            ? 'Pagaras: ${montoLocal.toStringAsFixed(2)} $moneda (tasa ${tasa.toStringAsFixed(2)} $moneda/USD)'
-                            : 'Pagaras: \$${montoLocal.toStringAsFixed(2)}',
-                        style: const TextStyle(color: Colors.grey),
+                    Container(
+                      height: 36,
+                      width: 36,
+                      decoration: BoxDecoration(
+                        color: AppColors.brandBlue600.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(10),
                       ),
-                    ],
+                      child: const Icon(
+                        Icons.account_balance_outlined,
+                        color: AppColors.brandBlue600,
+                        size: 18,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            banco,
+                            style: theme.textTheme.titleSmall?.copyWith(
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            '$codigo $moneda'.trim(),
+                            style: TextStyle(color: muted, fontSize: 13),
+                          ),
+                          if (montoLocal != null) ...[
+                            const SizedBox(height: 4),
+                            Text(
+                              esVes
+                                  ? 'Pagaras: ${montoLocal.toStringAsFixed(2)} $moneda (tasa ${tasa.toStringAsFixed(2)} $moneda/USD)'
+                                  : 'Pagaras: \$${montoLocal.toStringAsFixed(2)}',
+                              style: TextStyle(
+                                color: muted,
+                                fontFeatures: const [FontFeature.tabularFigures()],
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                    Icon(Icons.chevron_right, color: muted),
                   ],
                 ),
               ),
@@ -723,6 +965,7 @@ class _BankDetailStep extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
     if (cuenta == null) {
       return Center(
         child: Column(
@@ -737,61 +980,93 @@ class _BankDetailStep extends StatelessWidget {
     }
 
     final monedaLabel = cuenta?['moneda'] ?? (cuentaEsVes ? 'VES' : 'USD');
+    final bankCode = (cuenta!['codigo_banco'] ?? '').toString();
+    final bankName = (cuenta!['banco'] ?? '').toString();
+    final bankLabel = '$bankCode $bankName'.trim();
     final rows = [
-      ['Banco', '${cuenta!['codigo_banco'] ?? ''} ${cuenta!['banco'] ?? ''}'],
+      ['Banco', bankLabel],
       ['Cuenta', cuenta!['numero_cuenta_cliente'] ?? '--'],
       ['Titular', cuenta!['titular'] ?? '--'],
       ['CI/RIF', cuenta!['rif'] ?? '--'],
       ['Telefono', cuenta!['celular'] ?? '--'],
     ];
 
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        Row(
-          children: [
-            IconButton(
-              icon: const Icon(Icons.arrow_back),
-              onPressed: onBack,
-            ),
-            Text(
-              'Datos bancarios',
-              style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700, fontSize: 18),
-            ),
+    BoxDecoration cardDecoration() => BoxDecoration(
+          color: theme.cardColor,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: theme.colorScheme.outline),
+          boxShadow: [
+            if (!isDark)
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.06),
+                blurRadius: 16,
+                offset: const Offset(0, 8),
+              ),
           ],
+        );
+
+    return ListView(
+      padding: const EdgeInsets.all(20),
+      children: [
+        _StepHeader(
+          title: 'Datos bancarios',
+          subtitle: 'Usa estos datos para realizar el pago.',
+          step: 3,
+          total: 4,
+          onBack: onBack,
         ),
-        const SizedBox(height: 12),
-        ...rows.map(
-          (r) => _InfoRow(
-            label: r[0],
-            value: r[1],
-            onCopy: () => _copy(context, r[1]),
+        const SizedBox(height: 16),
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: cardDecoration(),
+          child: Column(
+            children: rows
+                .map(
+                  (r) => _InfoRow(
+                    label: r[0],
+                    value: r[1],
+                    onCopy: () => _copy(context, r[1]),
+                  ),
+                )
+                .toList(),
           ),
         ),
         const SizedBox(height: 16),
-        const Text(
-          'Resumen',
-          style: TextStyle(fontWeight: FontWeight.w700),
-        ),
-        const SizedBox(height: 8),
-        if (totalPendienteBase > 0)
-          _InfoRow(
-            label: 'Deuda total (USD)',
-            value: '\$${totalPendienteBase.toStringAsFixed(2)}',
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: cardDecoration(),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Resumen',
+                style: theme.textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 8),
+              if (totalPendienteBase > 0)
+                _InfoRow(
+                  label: 'Deuda total (USD)',
+                  value: '\$${totalPendienteBase.toStringAsFixed(2)}',
+                ),
+              _InfoRow(
+                label: 'Monto seleccionado (USD)',
+                value: '\$${montoUsd.toStringAsFixed(2)}',
+              ),
+              _InfoRow(
+                label: 'A pagar en $monedaLabel',
+                value: '${montoLocal.toStringAsFixed(2)} $monedaLabel',
+              ),
+              if (cuentaEsVes)
+                _InfoRow(
+                  label: 'Tasa aplicada',
+                  value:
+                      '${tasaCuenta.toStringAsFixed(2)} $monedaLabel / USD',
+                ),
+            ],
           ),
-        _InfoRow(
-          label: 'Monto seleccionado (USD)',
-          value: '\$${montoUsd.toStringAsFixed(2)}',
         ),
-        _InfoRow(
-          label: 'A pagar en $monedaLabel',
-          value: '${montoLocal.toStringAsFixed(2)} $monedaLabel',
-        ),
-        if (cuentaEsVes)
-          _InfoRow(
-            label: 'Tasa aplicada',
-            value: '${tasaCuenta.toStringAsFixed(2)} $monedaLabel / USD',
-          ),
         const SizedBox(height: 24),
         ElevatedButton(
           onPressed: onContinue,
@@ -805,7 +1080,6 @@ class _BankDetailStep extends StatelessWidget {
 class _PaymentFormStep extends StatelessWidget {
   final Map<String, dynamic>? cuenta;
   final DateTime fechaPago;
-  final List<Map<String, dynamic>> pendientes;
   final TextEditingController obsCtrl;
   final TextEditingController refCtrl;
   final bool cuentaEsVes;
@@ -824,7 +1098,6 @@ class _PaymentFormStep extends StatelessWidget {
   const _PaymentFormStep({
     required this.cuenta,
     required this.fechaPago,
-    required this.pendientes,
     required this.obsCtrl,
     required this.refCtrl,
     required this.cuentaEsVes,
@@ -844,22 +1117,17 @@ class _PaymentFormStep extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final monedaLabel = cuenta?['moneda'] ?? (cuentaEsVes ? 'VES' : 'USD');
-    final tasa = tasaCuenta > 0 ? tasaCuenta : 1;
+    final fecha = fechaPago.toIso8601String().split('T').first;
+
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(20),
       children: [
-        Row(
-          children: [
-            IconButton(
-              icon: const Icon(Icons.arrow_back),
-              onPressed: onBack,
-            ),
-            Text(
-              'Registrar pago',
-              style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700, fontSize: 18),
-            ),
-          ],
+        _StepHeader(
+          title: 'Registrar pago',
+          subtitle: 'Completa los datos del pago.',
+          step: 4,
+          total: 4,
+          onBack: onBack,
         ),
         const SizedBox(height: 16),
         TextField(
@@ -871,23 +1139,46 @@ class _PaymentFormStep extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 12),
+        InkWell(
+          onTap: onPickDate,
+          borderRadius: BorderRadius.circular(10),
+          child: InputDecorator(
+            decoration: const InputDecoration(
+              labelText: 'Fecha del pago',
+              suffixIcon: Icon(Icons.calendar_month),
+            ),
+            child: Text(fecha),
+          ),
+        ),
+        const SizedBox(height: 12),
         OutlinedButton.icon(
           onPressed: onPickEvidence,
           icon: const Icon(Icons.attach_file),
           label: Text(evidenceLabel ?? 'Adjuntar comprobante'),
         ),
         if (evidencePreview != null) evidencePreview!,
+        const SizedBox(height: 12),
+        TextField(
+          controller: obsCtrl,
+          maxLines: 3,
+          decoration: const InputDecoration(
+            labelText: 'Observaciones (opcional)',
+          ),
+        ),
         if (error != null) ...[
           const SizedBox(height: 12),
           Text(
             error!,
-            style: const TextStyle(color: Colors.redAccent, fontWeight: FontWeight.w600),
+            style: TextStyle(
+              color: theme.colorScheme.error,
+              fontWeight: FontWeight.w600,
+            ),
           ),
         ],
         const SizedBox(height: 24),
         ElevatedButton(
           onPressed: onSubmit,
-          child: const Text('Procesar'),
+          child: const Text('Enviar reporte'),
         ),
       ],
     );
@@ -900,25 +1191,42 @@ class _SuccessStep extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final muted =
+        theme.textTheme.bodySmall?.color?.withValues(alpha: 0.7) ?? AppColors.textMuted;
+
     return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-      const Icon(Icons.celebration, size: 72, color: Color(0xff1d9bf0)),
-          const SizedBox(height: 16),
-          const Text(
-            'Su pago esta por conciliacion',
-            style: TextStyle(fontWeight: FontWeight.w700, fontSize: 18),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 8),
-          const Text('Actualizaremos el estado en cuanto se valide.'),
-          const SizedBox(height: 24),
-          ElevatedButton(
-            onPressed: onClose,
-            child: const Text('Cerrar'),
-          ),
-        ],
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(
+              Icons.check_circle_rounded,
+              size: 72,
+              color: AppColors.success,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Reporte enviado',
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Tu pago esta en conciliacion. Te avisaremos cuando se valide.',
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodyMedium?.copyWith(color: muted),
+            ),
+            const SizedBox(height: 24),
+            ElevatedButton(
+              onPressed: onClose,
+              child: const Text('Volver a detalle'),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -932,21 +1240,27 @@ class _InfoRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final muted =
+        theme.textTheme.bodySmall?.color?.withValues(alpha: 0.7) ?? AppColors.textMuted;
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
+      padding: const EdgeInsets.symmetric(vertical: 8),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            label,
-            style: const TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
-              color: Color(0xff475467),
+          Expanded(
+            flex: 3,
+            child: Text(
+              label,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: muted,
+                fontWeight: FontWeight.w600,
+              ),
             ),
           ),
           const SizedBox(width: 12),
-          Flexible(
+          Expanded(
+            flex: 5,
             child: Row(
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
@@ -954,9 +1268,9 @@ class _InfoRow extends StatelessWidget {
                   child: Text(
                     value,
                     textAlign: TextAlign.end,
-                    style: const TextStyle(
+                    style: theme.textTheme.bodyMedium?.copyWith(
                       fontWeight: FontWeight.w700,
-                      fontSize: 16,
+                      fontFeatures: const [FontFeature.tabularFigures()],
                     ),
                   ),
                 ),
@@ -975,3 +1289,9 @@ class _InfoRow extends StatelessWidget {
     );
   }
 }
+
+
+
+
+
+

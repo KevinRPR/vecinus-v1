@@ -55,6 +55,31 @@ function respond_error(string $message, int $status = 400): void {
     exit;
 }
 
+function resolve_user_id_from_token(PDO $conn, string $token): int {
+    $stmt = $conn->prepare("
+        SELECT user_id
+        FROM menu_login.tokens
+        WHERE token = :token
+        LIMIT 1
+    ");
+    $stmt->execute([":token" => $token]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    if (!$row || !isset($row["user_id"])) {
+        throw new Exception("Token invalido o expirado.");
+    }
+
+    $expiresAt = date('Y-m-d H:i:s', strtotime('+30 days'));
+    $update = $conn->prepare("
+        UPDATE menu_login.tokens
+        SET expires_at = :exp
+        WHERE token = :token
+    ");
+    $update->execute([":exp" => $expiresAt, ":token" => $token]);
+
+    return (int)$row["user_id"];
+}
+
 function build_user_payload(array $userRow): array {
     $userId = $userRow['id_usuario'] ?? $userRow['id'] ?? $userRow['user_id'] ?? null;
 

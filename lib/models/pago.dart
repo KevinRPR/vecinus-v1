@@ -26,7 +26,7 @@ class Pago {
   });
 
   factory Pago.fromJson(Map<String, dynamic> json) {
-    String? _pick(List<String> keys) {
+    String? pickValue(List<String> keys) {
       for (final key in keys) {
         final value = json[key];
         if (value != null && value.toString().trim().isNotEmpty) {
@@ -44,10 +44,10 @@ class Pago {
       fechaEmision: json['fecha_emision']?.toString(),
       monto: json['monto']?.toString(),
       estado: json['estado']?.toString(),
-      documentoUrl: _pick(['documento_url', 'documento', 'document_url']),
-      reciboUrl: _pick(['recibo_url', 'recibo']),
-      notificacionUrl: _pick(['notificacion_url']),
-      token: _pick(['token']),
+      documentoUrl: pickValue(['documento_url', 'documento', 'document_url']),
+      reciboUrl: pickValue(['recibo_url', 'recibo']),
+      notificacionUrl: pickValue(['notificacion_url']),
+      token: pickValue(['token']),
     );
   }
 

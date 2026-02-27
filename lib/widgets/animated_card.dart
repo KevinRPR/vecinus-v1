@@ -30,13 +30,13 @@ class AnimatedCard extends StatelessWidget {
         borderRadius: borderRadius ?? BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.12),
+            color: Colors.black.withValues(alpha: 0.12),
             blurRadius: highlight ? 32 : 20,
             offset: const Offset(0, 12),
           ),
         ],
         border: highlight
-            ? Border.all(color: theme.colorScheme.primary.withOpacity(0.4))
+            ? Border.all(color: theme.colorScheme.primary.withValues(alpha: 0.4))
             : null,
       ),
       child: child,

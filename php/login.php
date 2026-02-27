@@ -59,7 +59,7 @@ FROM menu_login.usuario
 
     // Generar token
     $token = bin2hex(random_bytes(50));
-    $expiresAt = date('Y-m-d H:i:s', strtotime('+2 hours'));
+    $expiresAt = date('Y-m-d H:i:s', strtotime('+30 days'));
 
     $stmt = $conn->prepare("
         INSERT INTO menu_login.tokens (user_id, token, expires_at)
@@ -78,6 +78,7 @@ FROM menu_login.usuario
     echo json_encode([
         "success" => true,
         "token" => $token,
+        "session_expires_at" => $expiresAt,
         "usuario" => [
             "id" => $user['id_usuario'],
             "user" => $user['correo'],     // 👈 Aquí está lo que pediste

@@ -6,41 +6,43 @@ import '../models/pago.dart';
 class InmuebleDetailScreen extends StatelessWidget {
   final Inmueble inmueble;
 
-  const InmuebleDetailScreen({Key? key, required this.inmueble})
-      : super(key: key);
+  const InmuebleDetailScreen({super.key, required this.inmueble});
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Scaffold(
       appBar: AppBar(
         title: Text(inmueble.identificacion ?? 'Detalle del inmueble'),
-        backgroundColor: Colors.white,
-        foregroundColor: const Color(0xff203047),
         elevation: 1,
       ),
-      backgroundColor: const Color(0xfff3f4f6),
+      backgroundColor: theme.scaffoldBackgroundColor,
       body: ListView(
         padding: const EdgeInsets.all(20),
         children: [
-          _sectionTitle('Resumen'),
-          _infoTile('Estado', _estadoLabel(inmueble.estado)),
-          _infoTile('Tipo', _valueOrDash(inmueble.tipo)),
-          _infoTile('Direccion', _direccion(inmueble)),
+          _sectionTitle(context, 'Resumen'),
+          _infoTile(context, 'Estado', _estadoLabel(inmueble.estado)),
+          _infoTile(context, 'Tipo', _valueOrDash(inmueble.tipo)),
+          _infoTile(context, 'Direccion', _direccion(inmueble)),
           const SizedBox(height: 24),
-          _sectionTitle('Identificadores'),
-          _infoTile('ID inmueble', inmueble.idInmueble),
-          _infoTile('Condominio', inmueble.idCondominio),
-          _infoTile('Propietario', inmueble.idUsuario),
-          _infoTile('Correlativo', _valueOrDash(inmueble.correlativo)),
-          _infoTile('Alicuota', _valueOrDash(inmueble.alicuota)),
+          _sectionTitle(context, 'Identificadores'),
+          _infoTile(context, 'ID inmueble', inmueble.idInmueble),
+          _infoTile(context, 'Condominio', inmueble.idCondominio),
+          _infoTile(context, 'Propietario', inmueble.idUsuario),
+          _infoTile(context, 'Correlativo', _valueOrDash(inmueble.correlativo)),
+          _infoTile(context, 'Alicuota', _valueOrDash(inmueble.alicuota)),
           const SizedBox(height: 24),
-          _sectionTitle('Tiempos'),
-          _infoTile('Creado', _valueOrDash(inmueble.fechaCreacion)),
-          _infoTile('Actualizado', _valueOrDash(inmueble.fechaActualizacion)),
-          _infoTile('Proximo pago', _proximaFechaPago()),
+          _sectionTitle(context, 'Tiempos'),
+          _infoTile(context, 'Creado', _valueOrDash(inmueble.fechaCreacion)),
+          _infoTile(
+            context,
+            'Actualizado',
+            _valueOrDash(inmueble.fechaActualizacion),
+          ),
+          _infoTile(context, 'Proximo pago', _proximaFechaPago()),
           const SizedBox(height: 24),
-          _sectionTitle('Finanzas'),
-          _infoTile('Deuda actual', _formatMonto(inmueble.deudaActual)),
+          _sectionTitle(context, 'Finanzas'),
+          _infoTile(context, 'Deuda actual', _formatMonto(inmueble.deudaActual)),
           const SizedBox(height: 12),
           _pagosButton(context),
         ],
@@ -48,30 +50,38 @@ class InmuebleDetailScreen extends StatelessWidget {
     );
   }
 
-  Widget _sectionTitle(String text) {
+  Widget _sectionTitle(BuildContext context, String text) {
+    final theme = Theme.of(context);
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Text(
         text,
-        style: const TextStyle(
+        style: TextStyle(
           fontSize: 16,
           fontWeight: FontWeight.w600,
-          color: Color(0xff203047),
+          color: theme.colorScheme.onSurface,
         ),
       ),
     );
   }
 
-  Widget _infoTile(String title, String value) {
+  Widget _infoTile(BuildContext context, String title, String value) {
+    final theme = Theme.of(context);
+    final muted =
+        theme.textTheme.bodySmall?.color?.withValues(alpha: 0.7) ??
+            theme.colorScheme.onSurface.withValues(alpha: 0.6);
+    final shadowColor = Colors.black.withValues(
+      alpha: theme.brightness == Brightness.dark ? 0.25 : 0.05,
+    );
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: theme.cardColor,
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
+            color: shadowColor,
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -83,10 +93,10 @@ class InmuebleDetailScreen extends StatelessWidget {
           Expanded(
             child: Text(
               title,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w500,
-                color: Colors.black54,
+                color: muted,
               ),
             ),
           ),
@@ -95,10 +105,10 @@ class InmuebleDetailScreen extends StatelessWidget {
             child: Text(
               value,
               textAlign: TextAlign.right,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w600,
-                color: Color(0xff203047),
+                color: theme.colorScheme.onSurface,
               ),
             ),
           ),
@@ -108,6 +118,7 @@ class InmuebleDetailScreen extends StatelessWidget {
   }
 
   Widget _pagosButton(BuildContext context) {
+    final theme = Theme.of(context);
     return OutlinedButton.icon(
       onPressed: () => _showPagosSheet(context),
       icon: const Icon(Icons.receipt_long),
@@ -117,8 +128,8 @@ class InmuebleDetailScreen extends StatelessWidget {
             : 'Ver historial de pagos',
       ),
       style: OutlinedButton.styleFrom(
-        foregroundColor: const Color(0xff203047),
-        side: const BorderSide(color: Color(0xff203047)),
+        foregroundColor: theme.colorScheme.primary,
+        side: BorderSide(color: theme.colorScheme.primary),
         padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
       ),
     );
@@ -134,6 +145,10 @@ class InmuebleDetailScreen extends StatelessWidget {
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       builder: (_) {
+        final theme = Theme.of(context);
+        final muted =
+            theme.textTheme.bodySmall?.color?.withValues(alpha: 0.75) ??
+                theme.colorScheme.onSurface.withValues(alpha: 0.6);
         return FractionallySizedBox(
           heightFactor: 0.75,
           child: SafeArea(
@@ -147,18 +162,18 @@ class InmuebleDetailScreen extends StatelessWidget {
                       width: 50,
                       height: 4,
                       decoration: BoxDecoration(
-                        color: Colors.grey[300],
+                        color: theme.dividerColor,
                         borderRadius: BorderRadius.circular(50),
                       ),
                     ),
                   ),
                   const SizedBox(height: 16),
-                  const Text(
+                  Text(
                     'Historial de pagos',
                     style: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.w700,
-                      color: Color(0xff203047),
+                      color: theme.colorScheme.onSurface,
                     ),
                   ),
                   const SizedBox(height: 20),
@@ -170,7 +185,7 @@ class InmuebleDetailScreen extends StatelessWidget {
                           textAlign: TextAlign.center,
                           style: TextStyle(
                             fontSize: 14,
-                            color: Colors.grey[600],
+                            color: muted,
                           ),
                         ),
                       ),
@@ -180,7 +195,7 @@ class InmuebleDetailScreen extends StatelessWidget {
                       child: ListView.separated(
                         itemCount: pagos.length,
                         separatorBuilder: (_, __) => const SizedBox(height: 12),
-                        itemBuilder: (_, index) => _pagoTile(pagos[index]),
+                        itemBuilder: (_, index) => _pagoTile(context, pagos[index]),
                       ),
                     ),
                 ],
@@ -192,15 +207,22 @@ class InmuebleDetailScreen extends StatelessWidget {
     );
   }
 
-  Widget _pagoTile(Pago pago) {
+  Widget _pagoTile(BuildContext context, Pago pago) {
+    final theme = Theme.of(context);
+    final muted =
+        theme.textTheme.bodySmall?.color?.withValues(alpha: 0.75) ??
+            theme.colorScheme.onSurface.withValues(alpha: 0.6);
+    final shadowColor = Colors.black.withValues(
+      alpha: theme.brightness == Brightness.dark ? 0.25 : 0.05,
+    );
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: theme.cardColor,
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
+            color: shadowColor,
             blurRadius: 10,
             offset: const Offset(0, 3),
           ),
@@ -211,26 +233,26 @@ class InmuebleDetailScreen extends StatelessWidget {
         children: [
           Text(
             pago.descripcion ?? 'Pago ${pago.id}',
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.w600,
-              color: Color(0xff203047),
+              color: theme.colorScheme.onSurface,
             ),
           ),
           const SizedBox(height: 6),
           Text(
             'Fecha: ${_formatDate(pago.fecha)}',
-            style: TextStyle(fontSize: 13, color: Colors.grey[600]),
+            style: TextStyle(fontSize: 13, color: muted),
           ),
           const SizedBox(height: 4),
           Text(
             'Monto: ${_formatMonto(pago.monto)}',
-            style: TextStyle(fontSize: 13, color: Colors.grey[600]),
+            style: TextStyle(fontSize: 13, color: muted),
           ),
           const SizedBox(height: 4),
           Text(
             'Estado: ${_valueOrDash(pago.estado)}',
-            style: TextStyle(fontSize: 13, color: Colors.grey[600]),
+            style: TextStyle(fontSize: 13, color: muted),
           ),
         ],
       ),

@@ -1,6 +1,5 @@
 import 'dart:convert';
 
-import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class AppNotification {
@@ -53,15 +52,25 @@ class NotificationService {
     _prefs = await SharedPreferences.getInstance();
     final raw = _prefs!.getString(_prefsKey);
     if (raw != null && raw.isNotEmpty) {
-      final List<dynamic> list = jsonDecode(raw);
-      _items
-        ..clear()
-        ..addAll(
-          list
-              .whereType<Map<String, dynamic>>()
-              .map(AppNotification.fromJson)
-              .toList(),
-        );
+      try {
+        final decoded = jsonDecode(raw);
+        if (decoded is List) {
+          _items
+            ..clear()
+            ..addAll(
+              decoded
+                  .whereType<Map<String, dynamic>>()
+                  .map(AppNotification.fromJson)
+                  .toList(),
+            );
+        } else {
+          _items.clear();
+          await _prefs!.remove(_prefsKey);
+        }
+      } catch (_) {
+        _items.clear();
+        await _prefs!.remove(_prefsKey);
+      }
     }
     _initialized = true;
   }

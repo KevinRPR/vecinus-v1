@@ -19,6 +19,9 @@ class FadeSlideTransition extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (MediaQuery.of(context).accessibleNavigation) {
+      return child;
+    }
     return TweenAnimationBuilder<double>(
       tween: Tween(begin: 0, end: 1),
       duration: duration,
@@ -54,6 +57,9 @@ class ScaleFadeIn extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (MediaQuery.of(context).accessibleNavigation) {
+      return child;
+    }
     return TweenAnimationBuilder<double>(
       tween: Tween(begin: 0, end: 1),
       duration: duration,
@@ -77,6 +83,9 @@ PageRouteBuilder<T> fadeSlideRoute<T>(Widget page) {
     reverseTransitionDuration: AppAnimations.durationScreen,
     pageBuilder: (_, __, ___) => page,
     transitionsBuilder: (context, animation, secondaryAnimation, child) {
+      if (MediaQuery.of(context).accessibleNavigation) {
+        return child;
+      }
       final curved = CurvedAnimation(
         parent: animation,
         curve: AppAnimations.curveScreen,

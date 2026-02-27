@@ -3,16 +3,28 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../models/inmueble.dart';
 import '../models/user.dart';
+import '../models/user_preferences.dart';
 import '../animations/transitions.dart';
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
+import '../services/security_service.dart';
+import '../preferences_controller.dart';
 import '../theme_controller.dart';
 import 'login_screen.dart';
+
+const _primary = Color(0xff4F8B8B);
+const _cardLight = Color(0xffFFFFFF);
+const _cardDark = Color(0xff1E1E1E);
+const _borderLight = Color(0xffE2E8F0);
+const _textMutedLight = Color(0xff64748B);
+const _textMutedDark = Color(0xff94A3B8);
 
 class UserScreen extends StatefulWidget {
   final User user;
   final String token;
+  final List<Inmueble> inmuebles;
   final bool embedded;
   final ValueChanged<User>? onUserUpdated;
 
@@ -20,6 +32,7 @@ class UserScreen extends StatefulWidget {
     super.key,
     required this.user,
     required this.token,
+    this.inmuebles = const [],
     this.embedded = false,
     this.onUserUpdated,
   });
@@ -29,6 +42,7 @@ class UserScreen extends StatefulWidget {
 }
 
 class _UserScreenState extends State<UserScreen> {
+  static const String _noFavoriteValue = 'none';
   final _imagePicker = ImagePicker();
 
   late final TextEditingController _nombreController;
@@ -44,7 +58,6 @@ class _UserScreenState extends State<UserScreen> {
   bool _savingProfile = false;
   bool _changingPassword = false;
   bool _uploadingAvatar = false;
-  bool _syncing = false;
 
   @override
   void initState() {
@@ -54,6 +67,7 @@ class _UserScreenState extends State<UserScreen> {
     _correoController = TextEditingController(text: widget.user.correo);
     _user = widget.user;
     _loading = false; // usamos datos locales almacenados, sin esperar llamada remota
+    preferencesController.loadForUser(widget.user.id);
   }
 
   @override
@@ -68,7 +82,6 @@ class _UserScreenState extends State<UserScreen> {
   }
 
   Future<void> _syncProfile() async {
-    setState(() => _syncing = true);
     try {
       final remoteUser = await ApiService.fetchProfile(widget.token);
       final sessionAware = remoteUser.copyWith(
@@ -84,23 +97,22 @@ class _UserScreenState extends State<UserScreen> {
       await AuthService.saveSession(widget.token, sessionAware.toJson());
     } catch (e) {
       _showSnack('No se pudo sincronizar el perfil: $e');
-    } finally {
-      setState(() => _syncing = false);
     }
   }
 
-  Future<void> _saveProfile() async {
+  Future<bool> _saveProfile() async {
+    if (_savingProfile) return false;
     final nombre = _nombreController.text.trim();
     final apellido = _apellidoController.text.trim();
     final correo = _correoController.text.trim();
 
     if (nombre.isEmpty || apellido.isEmpty) {
       _showSnack('Completa tu nombre y apellido.');
-      return;
+      return false;
     }
     if (!_isValidEmail(correo)) {
       _showSnack('El correo no parece valido.');
-      return;
+      return false;
     }
 
     setState(() => _savingProfile = true);
@@ -121,29 +133,44 @@ class _UserScreenState extends State<UserScreen> {
       setState(() => _user = sessionAware);
       widget.onUserUpdated?.call(sessionAware);
       _showSnack('Datos actualizados.');
+      return true;
     } catch (e) {
       _showSnack('Error al actualizar: $e');
+      return false;
     } finally {
       setState(() => _savingProfile = false);
     }
   }
 
-  Future<void> _changePassword() async {
+  Future<bool> _changePassword() async {
+    if (_changingPassword) return false;
     final actual = _passwordActualController.text;
     final nueva = _passwordNuevaController.text;
     final confirm = _passwordConfirmController.text;
 
     if (actual.isEmpty || nueva.isEmpty || confirm.isEmpty) {
       _showSnack('Completa todos los campos de contrasena.');
-      return;
+      return false;
     }
     if (nueva.length < 6) {
       _showSnack('La contrasena nueva debe tener al menos 6 caracteres.');
-      return;
+      return false;
     }
     if (nueva != confirm) {
       _showSnack('La confirmacion no coincide.');
-      return;
+      return false;
+    }
+
+    final securityPrefs = preferencesController.preferences.value.security;
+    final allowed = await SecurityService.requireAuthentication(
+      context: context,
+      useBiometrics: securityPrefs.biometricForSensitive,
+      usePin: securityPrefs.pinForSensitive,
+      reason: 'Confirma tu identidad para cambiar la contrasena.',
+    );
+    if (!allowed) {
+      _showSnack('No se pudo verificar tu identidad.');
+      return false;
     }
 
     setState(() => _changingPassword = true);
@@ -157,8 +184,10 @@ class _UserScreenState extends State<UserScreen> {
       _passwordNuevaController.clear();
       _passwordConfirmController.clear();
       _showSnack('Contrasena actualizada correctamente.');
+      return true;
     } catch (e) {
       _showSnack('No se pudo actualizar la contrasena: $e');
+      return false;
     } finally {
       setState(() => _changingPassword = false);
     }
@@ -217,10 +246,14 @@ class _UserScreenState extends State<UserScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final background = Theme.of(context).scaffoldBackgroundColor;
+
     final scaffold = Scaffold(
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      backgroundColor: background,
       appBar: AppBar(
         title: const Text('Mi perfil'),
+        centerTitle: false,
         automaticallyImplyLeading: !widget.embedded,
         leading: widget.embedded
             ? null
@@ -232,130 +265,59 @@ class _UserScreenState extends State<UserScreen> {
                   Navigator.pop(context, user);
                 },
               ),
+        actions: [
+          ValueListenableBuilder<ThemeMode>(
+            valueListenable: themeController.themeMode,
+            builder: (context, mode, _) {
+              final isDarkMode = mode == ThemeMode.dark;
+              final buttonColor =
+                  isDark ? const Color(0xff1F2937) : const Color(0xffF1F5F9);
+              final iconColor =
+                  isDark ? const Color(0xffCBD5E1) : const Color(0xff475569);
+              return Padding(
+                padding: const EdgeInsets.only(right: 12),
+                child: Ink(
+                  decoration: BoxDecoration(
+                    color: buttonColor,
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(999),
+                    onTap: () => themeController.toggleDark(!isDarkMode),
+                    child: Padding(
+                      padding: const EdgeInsets.all(8),
+                      child: Icon(
+                        isDarkMode ? Icons.light_mode : Icons.dark_mode,
+                        color: iconColor,
+                        size: 20,
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        ],
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : RefreshIndicator(
               onRefresh: _syncProfile,
-              child: SingleChildScrollView(
+              child: ListView(
                 physics: const AlwaysScrollableScrollPhysics(),
-                padding: const EdgeInsets.all(20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    FadeSlideTransition(
-                      beginOffset: const Offset(0, 0.02),
-                      child: _profileHeader(context),
-                    ),
-                    const SizedBox(height: 16),
-                    _preferencesSection(context),
-                    const SizedBox(height: 24),
-                    _sectionCard(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          _buildInputLabel('Nombre'),
-                          _buildTextField(_nombreController, TextInputType.name),
-                          const SizedBox(height: 16),
-                          _buildInputLabel('Apellido'),
-                          _buildTextField(_apellidoController, TextInputType.name),
-                          const SizedBox(height: 16),
-                          _buildInputLabel('Correo'),
-                          _buildTextField(
-                            _correoController,
-                            TextInputType.emailAddress,
-                          ),
-                          const SizedBox(height: 24),
-                          SizedBox(
-                            width: double.infinity,
-                            child: ElevatedButton(
-                              onPressed: _savingProfile ? null : _saveProfile,
-                              child: _savingProfile
-                                  ? const SizedBox(
-                                      height: 20,
-                                      width: 20,
-                                      child:
-                                          CircularProgressIndicator(strokeWidth: 2),
-                                    )
-                                  : const Text('Guardar cambios'),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 24),
-                    Text(
-                      'Seguridad',
-                      style: Theme.of(context).textTheme.titleMedium,
-                    ),
-                    const SizedBox(height: 12),
-                  _sectionCard(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _buildInputLabel('Contrasena actual'),
-                          _buildTextField(
-                            _passwordActualController,
-                            TextInputType.visiblePassword,
-                            obscure: true,
-                          ),
-                          const SizedBox(height: 16),
-                          _buildInputLabel('Nueva contrasena'),
-                          _buildTextField(
-                            _passwordNuevaController,
-                            TextInputType.visiblePassword,
-                            obscure: true,
-                          ),
-                          const SizedBox(height: 16),
-                          _buildInputLabel('Confirmar contrasena'),
-                          _buildTextField(
-                            _passwordConfirmController,
-                            TextInputType.visiblePassword,
-                            obscure: true,
-                          ),
-                          const SizedBox(height: 24),
-                        SizedBox(
-                          width: double.infinity,
-                          child: OutlinedButton(
-                            onPressed: _changingPassword ? null : _changePassword,
-                            child: _changingPassword
-                                  ? const SizedBox(
-                                      height: 20,
-                                      width: 20,
-                              child:
-                                  CircularProgressIndicator(strokeWidth: 2),
-                            )
-                                : const Text('Actualizar contrasena'),
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                        SizedBox(
-                          width: double.infinity,
-                          child: OutlinedButton.icon(
-                            icon: const Icon(Icons.logout),
-                            label: const Text('Cerrar sesion'),
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor:
-                                  Theme.of(context).colorScheme.error,
-                              side: BorderSide(
-                                color: Theme.of(context).colorScheme.error,
-                              ),
-                            ),
-                            onPressed: () async {
-                              await AuthService.logout();
-                              if (!mounted) return;
-                              Navigator.of(context).pushAndRemoveUntil(
-                                fadeSlideRoute(LoginScreen()),
-                                (route) => false,
-                              );
-                            },
-                          ),
-                        ),
-                      ],
-                    ),
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+                children: [
+                  FadeSlideTransition(
+                    beginOffset: const Offset(0, 0.02),
+                    child: _buildProfileCard(context),
                   ),
+                  const SizedBox(height: 18),
+                  _buildSettingsSection(context),
+                  const SizedBox(height: 18),
+                  _buildSupportCard(context),
+                  const SizedBox(height: 12),
+                  _buildVersionFooter(context),
                 ],
-              ),
               ),
             ),
     );
@@ -364,88 +326,391 @@ class _UserScreenState extends State<UserScreen> {
       return scaffold;
     }
 
-    return WillPopScope(
-      onWillPop: () async {
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
         final user = _user ?? widget.user;
         widget.onUserUpdated?.call(user);
         Navigator.pop(context, user);
-        return false;
       },
       child: scaffold,
     );
   }
 
-  Widget _profileHeader(BuildContext context) {
-    final avatarUrl = _user?.avatarUrl;
+  Widget _buildProfileCard(BuildContext context) {
+    final user = _user ?? widget.user;
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final cardColor = _cardColor(isDark);
+    final borderColor = _borderColor(isDark);
+    final muted = _mutedColor(isDark);
 
     return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 20),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: isDark
-              ? const [Color(0xff161921), Color(0xff1f2330)]
-              : const [Color(0xfff9fafb), Color(0xffeef2ff)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
+        color: cardColor,
         borderRadius: BorderRadius.circular(28),
+        border: Border.all(color: borderColor),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.06),
+            blurRadius: 16,
+            offset: const Offset(0, 8),
+          ),
+        ],
       ),
-      child: Column(
-        children: [
-          Stack(
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(28),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: _openEditProfileSheet,
+          child: Column(
             children: [
-              CircleAvatar(
-                radius: 55,
-                backgroundColor: const Color(0xffe2e8f0),
-                backgroundImage:
-                    avatarUrl != null ? NetworkImage(avatarUrl) : null,
-                child: avatarUrl == null
-                    ? const Icon(Icons.person, size: 50, color: Colors.white70)
-                    : null,
-              ),
-              Positioned(
-                bottom: 0,
-                right: 0,
-                child: InkWell(
-                  onTap: _uploadingAvatar ? null : _pickAvatar,
-                  child: CircleAvatar(
-                    radius: 20,
-                    backgroundColor: const Color(0xff1d9bf0),
-                    child: _uploadingAvatar
-                        ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
-                            ),
-                          )
-                        : const Icon(
-                            Icons.camera_alt,
-                            color: Colors.white,
-                            size: 18,
-                          ),
-                  ),
+              Container(height: 4, color: _primary),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 20, 20, 22),
+                child: Column(
+                  children: [
+                    _buildAvatar(user, isDark),
+                    const SizedBox(height: 12),
+                    Text(
+                      user.displayName,
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w700,
+                        color: Theme.of(context).colorScheme.onSurface,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      _profileSubtitle(user),
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: muted,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      user.correo,
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: muted.withValues(alpha: 0.9),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 12),
-          Text(
-            (_user ?? widget.user).displayName,
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.w700,
-              color: isDark ? Colors.white : Colors.black,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAvatar(User user, bool isDark) {
+    final avatarUrl = user.avatarUrl;
+    final fallback = Container(
+      color: _primary.withValues(alpha: 0.12),
+      child: const Icon(
+        Icons.person,
+        color: _primary,
+        size: 36,
+      ),
+    );
+
+    return Stack(
+      alignment: Alignment.center,
+      children: [
+        Container(
+          width: 96,
+          height: 96,
+          padding: const EdgeInsets.all(4),
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            border: Border.all(color: _primary.withValues(alpha: 0.2), width: 4),
+          ),
+          child: ClipOval(
+            child: avatarUrl != null && avatarUrl.isNotEmpty
+                ? Image.network(
+                    avatarUrl,
+                    fit: BoxFit.cover,
+                    errorBuilder: (context, error, stackTrace) => fallback,
+                  )
+                : fallback,
+          ),
+        ),
+        Positioned(
+          bottom: 0,
+          right: 0,
+          child: GestureDetector(
+            onTap: _uploadingAvatar ? null : _pickAvatar,
+            child: Container(
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                color: _primary,
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: isDark ? _cardDark : Colors.white,
+                  width: 2,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.18),
+                    blurRadius: 8,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: _uploadingAvatar
+                  ? const SizedBox(
+                      height: 14,
+                      width: 14,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Icon(
+                      Icons.photo_camera,
+                      color: Colors.white,
+                      size: 16,
+                    ),
             ),
           ),
-          const SizedBox(height: 4),
-          Text(
-            _user?.correo ?? widget.user.correo,
-            style: TextStyle(
-              color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
+        ),
+      ],
+    );
+  }
+
+  String _profileSubtitle(User user) {
+    if (user.id.trim().isEmpty) return 'Cuenta Vecinus';
+    return 'Usuario #${user.id}';
+  }
+
+  Widget _buildSettingsSection(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final cardColor = _cardColor(isDark);
+    final borderColor = _borderColor(isDark);
+    final muted = _mutedColor(isDark);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'CONFIGURACION',
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 1.4,
+            color: muted,
+          ),
+        ),
+        const SizedBox(height: 10),
+        Container(
+          decoration: BoxDecoration(
+            color: cardColor,
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: borderColor),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: isDark ? 0.18 : 0.04),
+                blurRadius: 12,
+                offset: const Offset(0, 6),
+              ),
+            ],
+          ),
+          child: Column(
+            children: [
+              _settingsTile(
+                icon: Icons.settings,
+                iconColor: const Color(0xff2563EB),
+                iconBackground: const Color(0xffDBEAFE),
+                title: 'Preferencias',
+                subtitle: 'Notificaciones, idioma...',
+                showDivider: true,
+                dividerColor: borderColor,
+                onTap: _openPreferencesSheet,
+              ),
+              _settingsTile(
+                icon: Icons.security,
+                iconColor: const Color(0xff7C3AED),
+                iconBackground: const Color(0xffEDE9FE),
+                title: 'Seguridad',
+                subtitle: 'Cambiar contrasena, 2FA',
+                showDivider: true,
+                dividerColor: borderColor,
+                onTap: _openSecuritySheet,
+              ),
+              _settingsTile(
+                icon: Icons.logout,
+                iconColor: const Color(0xffEF4444),
+                iconBackground: const Color(0xffFEE2E2),
+                title: 'Cerrar sesion',
+                showChevron: false,
+                isDestructive: true,
+                dividerColor: borderColor,
+                onTap: _handleLogout,
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _settingsTile({
+    required IconData icon,
+    required Color iconColor,
+    required Color iconBackground,
+    required String title,
+    String? subtitle,
+    bool showDivider = false,
+    bool showChevron = true,
+    bool isDestructive = false,
+    Color? dividerColor,
+    VoidCallback? onTap,
+  }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final muted = _mutedColor(isDark);
+    final textColor = isDestructive ? iconColor : Theme.of(context).colorScheme.onSurface;
+
+    return Column(
+      children: [
+        Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: onTap,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: isDark
+                          ? iconBackground.withValues(alpha: 0.25)
+                          : iconBackground,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(icon, color: iconColor, size: 20),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          title,
+                          style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            color: textColor,
+                          ),
+                        ),
+                        if (subtitle != null) ...[
+                          const SizedBox(height: 2),
+                          Text(
+                            subtitle,
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: muted,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                  if (showChevron) Icon(Icons.chevron_right, color: muted),
+                ],
+              ),
+            ),
+          ),
+        ),
+        if (showDivider)
+          Divider(
+            height: 1,
+            color: dividerColor ?? _borderColor(isDark),
+          ),
+      ],
+    );
+  }
+
+  Future<void> _handleLogout() async {
+    await AuthService.logout();
+    if (!mounted) return;
+    Navigator.of(context).pushAndRemoveUntil(
+      fadeSlideRoute(const LoginScreen()),
+      (route) => false,
+    );
+  }
+
+  Widget _buildSupportCard(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final muted = _mutedColor(isDark);
+    final background = _primary.withValues(alpha: isDark ? 0.12 : 0.1);
+    final borderColor = _primary.withValues(alpha: isDark ? 0.3 : 0.2);
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: borderColor),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: _primary,
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: const Icon(Icons.support_agent, color: Colors.white),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Necesitas ayuda?',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    color: Theme.of(context).colorScheme.onSurface,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'Nuestro equipo de soporte esta disponible para asistirte con cualquier duda sobre tu comunidad.',
+                  style: TextStyle(
+                    fontSize: 12,
+                    height: 1.4,
+                    color: muted,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: _openSupportSheet,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: _primary,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      elevation: 0,
+                    ),
+                    child: const Text(
+                      'Contactar soporte',
+                      style: TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
         ],
@@ -453,40 +718,1145 @@ class _UserScreenState extends State<UserScreen> {
     );
   }
 
-  Widget _preferencesSection(BuildContext context) {
-    final textTheme = Theme.of(context).textTheme;
-    return _sectionCard(
-      child: ValueListenableBuilder<ThemeMode>(
-        valueListenable: themeController.themeMode,
-        builder: (context, mode, _) {
-          final isDark = mode == ThemeMode.dark;
-          return SwitchListTile.adaptive(
-            contentPadding: EdgeInsets.zero,
-            title: Text(
-              'Modo oscuro',
-              style: textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
-            ),
-            subtitle: const Text('Usa tonos carbon modernos para baja luz.'),
-            value: isDark,
-            onChanged: (value) => themeController.toggleDark(value),
-            activeColor: Theme.of(context).colorScheme.primary,
-          );
-        },
+  Widget _buildVersionFooter(BuildContext context) {
+    final muted =
+        _mutedColor(Theme.of(context).brightness == Brightness.dark).withValues(alpha: 0.8);
+    return Center(
+      child: Text(
+        'Vecinus App v2.4.0',
+        style: TextStyle(fontSize: 11, color: muted),
       ),
     );
   }
 
-  Widget _sectionCard({required Widget child}) {
+  void _openEditProfileSheet() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Theme.of(context).cardColor,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (sheetContext) {
+        final bottomInset = MediaQuery.of(sheetContext).viewInsets.bottom;
+        final isDark = Theme.of(sheetContext).brightness == Brightness.dark;
+        final muted = _mutedColor(isDark);
+
+        return SafeArea(
+          top: false,
+          child: SingleChildScrollView(
+            padding: EdgeInsets.fromLTRB(20, 12, 20, 20 + bottomInset),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _sheetHandle(muted),
+                const SizedBox(height: 12),
+                Text(
+                  'Editar perfil',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    color: Theme.of(sheetContext).colorScheme.onSurface,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                _buildInputLabel('Nombre'),
+                _buildTextField(_nombreController, TextInputType.name),
+                const SizedBox(height: 12),
+                _buildInputLabel('Apellido'),
+                _buildTextField(_apellidoController, TextInputType.name),
+                const SizedBox(height: 12),
+                _buildInputLabel('Correo'),
+                _buildTextField(_correoController, TextInputType.emailAddress),
+                const SizedBox(height: 20),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: _savingProfile
+                        ? null
+                        : () async {
+                            final saved = await _saveProfile();
+                            if (!mounted) return;
+                            if (!sheetContext.mounted) return;
+                            if (saved) Navigator.of(sheetContext).pop();
+                          },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: _primary,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      elevation: 0,
+                    ),
+                    child: _savingProfile
+                        ? const SizedBox(
+                            height: 18,
+                            width: 18,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Text(
+                            'Guardar cambios',
+                            style: TextStyle(fontWeight: FontWeight.w700),
+                          ),
+                  ),
+                ),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton(
+                    onPressed: () => Navigator.of(sheetContext).pop(),
+                    child: const Text('Cerrar'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  void _openPreferencesSheet() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Theme.of(context).cardColor,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (sheetContext) {
+        final bottomInset = MediaQuery.of(sheetContext).viewInsets.bottom;
+        final isDark = Theme.of(sheetContext).brightness == Brightness.dark;
+        final muted = _mutedColor(isDark);
+        final cardColor = _cardColor(isDark);
+        final borderColor = _borderColor(isDark);
+        final hasMultipleInmuebles = widget.inmuebles.length > 1;
+
+        return ValueListenableBuilder<UserPreferences>(
+          valueListenable: preferencesController.preferences,
+          builder: (context, prefs, _) {
+            return SafeArea(
+              top: false,
+              child: SingleChildScrollView(
+                padding: EdgeInsets.fromLTRB(20, 12, 20, 24 + bottomInset),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _sheetHandle(muted),
+                    const SizedBox(height: 12),
+                    Text(
+                      'Preferencias',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: Theme.of(sheetContext).colorScheme.onSurface,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    _sheetSectionTitle('Accesibilidad', muted),
+                    const SizedBox(height: 8),
+                    _sheetCard(
+                      cardColor: cardColor,
+                      borderColor: borderColor,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Tamano de letra',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w600,
+                              color: Theme.of(sheetContext)
+                                  .colorScheme
+                                  .onSurface,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            'Escala actual: ${(prefs.textScale * 100).round()}%',
+                            style: TextStyle(fontSize: 12, color: muted),
+                          ),
+                          Slider(
+                            value: prefs.textScale,
+                            min: 0.85,
+                            max: 1.25,
+                            divisions: 8,
+                            label: '${(prefs.textScale * 100).round()}%',
+                            activeColor: _primary,
+                            onChanged: (value) {
+                              preferencesController.updateWith(
+                                (current) => current.copyWith(textScale: value),
+                              );
+                            },
+                          ),
+                          const Divider(height: 1),
+                          _buildSwitchTile(
+                            title: 'Alto contraste',
+                            subtitle: 'Mejora la legibilidad.',
+                            value: prefs.highContrast,
+                            onChanged: (value) {
+                              preferencesController.updateWith(
+                                (current) =>
+                                    current.copyWith(highContrast: value),
+                              );
+                            },
+                          ),
+                          const Divider(height: 1),
+                          _buildSwitchTile(
+                            title: 'Reducir animaciones',
+                            subtitle: 'Minimiza los movimientos en pantalla.',
+                            value: prefs.reduceMotion,
+                            onChanged: (value) {
+                              preferencesController.updateWith(
+                                (current) =>
+                                    current.copyWith(reduceMotion: value),
+                              );
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    _sheetSectionTitle('Notificaciones', muted),
+                    const SizedBox(height: 8),
+                    _sheetCard(
+                      cardColor: cardColor,
+                      borderColor: borderColor,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _sectionMiniTitle('Tipos', muted),
+                          _buildSwitchTile(
+                            title: 'Avisos',
+                            subtitle: 'Comunicados de administracion.',
+                            value: prefs.notifications.avisos,
+                            onChanged: (value) {
+                              preferencesController.updateWith(
+                                (current) => current.copyWith(
+                                  notifications: current.notifications
+                                      .copyWith(avisos: value),
+                                ),
+                              );
+                            },
+                          ),
+                          _buildSwitchTile(
+                            title: 'Alertas',
+                            subtitle: 'Advertencias y recordatorios.',
+                            value: prefs.notifications.alertas,
+                            onChanged: (value) {
+                              preferencesController.updateWith(
+                                (current) => current.copyWith(
+                                  notifications: current.notifications
+                                      .copyWith(alertas: value),
+                                ),
+                              );
+                            },
+                          ),
+                          _buildSwitchTile(
+                            title: 'Eventos',
+                            subtitle: 'Actividades y reuniones.',
+                            value: prefs.notifications.eventos,
+                            onChanged: (value) {
+                              preferencesController.updateWith(
+                                (current) => current.copyWith(
+                                  notifications: current.notifications
+                                      .copyWith(eventos: value),
+                                ),
+                              );
+                            },
+                          ),
+                          _buildSwitchTile(
+                            title: 'Pagos',
+                            subtitle: 'Vencimientos y confirmaciones.',
+                            value: prefs.notifications.pagos,
+                            onChanged: (value) {
+                              preferencesController.updateWith(
+                                (current) => current.copyWith(
+                                  notifications: current.notifications
+                                      .copyWith(pagos: value),
+                                ),
+                              );
+                            },
+                          ),
+                          const Divider(height: 1),
+                          _sectionMiniTitle('Canales', muted),
+                          _buildSwitchTile(
+                            title: 'Push',
+                            subtitle: 'Alertas en el telefono.',
+                            value: prefs.notifications.push,
+                            onChanged: (value) {
+                              preferencesController.updateWith(
+                                (current) => current.copyWith(
+                                  notifications: current.notifications
+                                      .copyWith(push: value),
+                                ),
+                              );
+                            },
+                          ),
+                          _buildSwitchTile(
+                            title: 'Email',
+                            subtitle: 'Resumenes por correo.',
+                            value: prefs.notifications.email,
+                            onChanged: (value) {
+                              preferencesController.updateWith(
+                                (current) => current.copyWith(
+                                  notifications: current.notifications
+                                      .copyWith(email: value),
+                                ),
+                              );
+                            },
+                          ),
+                          _buildSwitchTile(
+                            title: 'WhatsApp',
+                            subtitle: 'Mensajes rapidos al celular.',
+                            value: prefs.notifications.whatsapp,
+                            onChanged: (value) {
+                              preferencesController.updateWith(
+                                (current) => current.copyWith(
+                                  notifications: current.notifications
+                                      .copyWith(whatsapp: value),
+                                ),
+                              );
+                            },
+                          ),
+                          const Divider(height: 1),
+                          ListTile(
+                            contentPadding:
+                                const EdgeInsets.symmetric(horizontal: 16),
+                            title: const Text('Horario silencio'),
+                            subtitle: Text(
+                              _quietHoursSummary(prefs.quietHours),
+                              style: TextStyle(fontSize: 12, color: muted),
+                            ),
+                            trailing: Text(
+                              _quietHoursStatus(prefs.quietHours),
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                color: prefs.quietHours.isActive(DateTime.now())
+                                    ? _primary
+                                    : muted,
+                              ),
+                            ),
+                            onTap: () => _openQuietHoursSheet(prefs.quietHours),
+                          ),
+                        ],
+                      ),
+                    ),
+                    if (hasMultipleInmuebles) ...[
+                      const SizedBox(height: 16),
+                      _sheetSectionTitle('Inmuebles', muted),
+                      const SizedBox(height: 8),
+                      _sheetCard(
+                        cardColor: cardColor,
+                        borderColor: borderColor,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            DropdownButtonFormField<String>(
+                              initialValue: _resolveFavoriteValue(
+                                prefs.inmueble.favoriteInmuebleId,
+                              ),
+                              decoration: const InputDecoration(
+                                labelText: 'Inmueble favorito',
+                              ),
+                              items: _favoriteDropdownItems(),
+                              onChanged: (value) {
+                                final favorite = value == _noFavoriteValue
+                                    ? null
+                                    : value;
+                                preferencesController.updateWith(
+                                  (current) => current.copyWith(
+                                    inmueble: current.inmueble.copyWith(
+                                      favoriteInmuebleId: favorite,
+                                      clearFavorite: favorite == null,
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                            const SizedBox(height: 12),
+                            DropdownButtonFormField<DashboardCardOrder>(
+                              initialValue: prefs.inmueble.cardOrder,
+                              decoration: const InputDecoration(
+                                labelText: 'Orden de tarjetas',
+                              ),
+                              items: const [
+                                DropdownMenuItem(
+                                  value: DashboardCardOrder.balanceFirst,
+                                  child: Text('Saldo primero'),
+                                ),
+                                DropdownMenuItem(
+                                  value: DashboardCardOrder.announcementsFirst,
+                                  child: Text('Avisos primero'),
+                                ),
+                              ],
+                              onChanged: (value) {
+                                if (value == null) return;
+                                preferencesController.updateWith(
+                                  (current) => current.copyWith(
+                                    inmueble: current.inmueble.copyWith(
+                                      cardOrder: value,
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                            const SizedBox(height: 4),
+                            _buildSwitchTile(
+                              title: 'Resumen compacto',
+                              subtitle:
+                                  'Muestra menos detalle en el dashboard.',
+                              value: prefs.inmueble.compactSummary,
+                              onChanged: (value) {
+                                preferencesController.updateWith(
+                                  (current) => current.copyWith(
+                                    inmueble: current.inmueble.copyWith(
+                                      compactSummary: value,
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: TextButton(
+                        onPressed: () => Navigator.of(sheetContext).pop(),
+                        child: const Text('Cerrar'),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  void _openSecuritySheet() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Theme.of(context).cardColor,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (sheetContext) {
+        final bottomInset = MediaQuery.of(sheetContext).viewInsets.bottom;
+        final isDark = Theme.of(sheetContext).brightness == Brightness.dark;
+        final muted = _mutedColor(isDark);
+        final cardColor = _cardColor(isDark);
+        final borderColor = _borderColor(isDark);
+
+        return ValueListenableBuilder<UserPreferences>(
+          valueListenable: preferencesController.preferences,
+          builder: (context, prefs, _) {
+            final security = prefs.security;
+            return SafeArea(
+              top: false,
+              child: SingleChildScrollView(
+                padding: EdgeInsets.fromLTRB(20, 12, 20, 20 + bottomInset),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _sheetHandle(muted),
+                    const SizedBox(height: 12),
+                    Text(
+                      'Seguridad',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: Theme.of(sheetContext).colorScheme.onSurface,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    _sheetSectionTitle('Cuenta', muted),
+                    const SizedBox(height: 8),
+                    _sheetCard(
+                      cardColor: cardColor,
+                      borderColor: borderColor,
+                      child: Column(
+                        children: [
+                          ListTile(
+                            contentPadding:
+                                const EdgeInsets.symmetric(horizontal: 16),
+                            title: const Text('Cambiar correo'),
+                            subtitle: Text(
+                              'Requiere verificacion.',
+                              style: TextStyle(fontSize: 12, color: muted),
+                            ),
+                            trailing:
+                                Icon(Icons.chevron_right, color: muted),
+                            onTap: () => _openContactChangeSheet(
+                              title: 'Cambiar correo',
+                              hint: 'nuevo@correo.com',
+                              fieldLabel: 'Correo',
+                              kind: ContactKind.email,
+                            ),
+                          ),
+                          const Divider(height: 1),
+                          ListTile(
+                            contentPadding:
+                                const EdgeInsets.symmetric(horizontal: 16),
+                            title: const Text('Cambiar telefono'),
+                            subtitle: Text(
+                              'Enviaremos un codigo.',
+                              style: TextStyle(fontSize: 12, color: muted),
+                            ),
+                            trailing:
+                                Icon(Icons.chevron_right, color: muted),
+                            onTap: () => _openContactChangeSheet(
+                              title: 'Cambiar telefono',
+                              hint: '+58 000 000 0000',
+                              fieldLabel: 'Telefono',
+                              kind: ContactKind.phone,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    _sheetSectionTitle('Acceso rapido', muted),
+                    const SizedBox(height: 8),
+                    _sheetCard(
+                      cardColor: cardColor,
+                      borderColor: borderColor,
+                      child: Column(
+                        children: [
+                          _buildSwitchTile(
+                            title: 'Biometria para entrar',
+                            subtitle: 'Huella o Face ID al iniciar sesion.',
+                            value: security.biometricForLogin,
+                            onChanged: (value) async {
+                              if (value) {
+                                final available =
+                                    await SecurityService.canUseBiometrics();
+                                if (!available) {
+                                  _showSnack(
+                                    'Biometria no disponible en este dispositivo.',
+                                  );
+                                  return;
+                                }
+                                final ok =
+                                    await SecurityService.authenticateBiometric(
+                                  reason: 'Confirma biometria para activar.',
+                                );
+                                if (!ok) {
+                                  _showSnack(
+                                    'No se pudo verificar tu biometria.',
+                                  );
+                                  return;
+                                }
+                              }
+                              preferencesController.updateWith(
+                                (current) => current.copyWith(
+                                  security: current.security.copyWith(
+                                    biometricForLogin: value,
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                          _buildSwitchTile(
+                            title: 'Biometria para acciones sensibles',
+                            subtitle: 'Pagos y cambios de contrasena.',
+                            value: security.biometricForSensitive,
+                            onChanged: (value) async {
+                              if (value) {
+                                final available =
+                                    await SecurityService.canUseBiometrics();
+                                if (!available) {
+                                  _showSnack(
+                                    'Biometria no disponible en este dispositivo.',
+                                  );
+                                  return;
+                                }
+                                final ok =
+                                    await SecurityService.authenticateBiometric(
+                                  reason: 'Confirma biometria para activar.',
+                                );
+                                if (!ok) {
+                                  _showSnack(
+                                    'No se pudo verificar tu biometria.',
+                                  );
+                                  return;
+                                }
+                              }
+                              preferencesController.updateWith(
+                                (current) => current.copyWith(
+                                  security: current.security.copyWith(
+                                    biometricForSensitive: value,
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                          const Divider(height: 1),
+                          _buildSwitchTile(
+                            title: 'PIN para entrar',
+                            subtitle: 'Solicitar PIN al iniciar sesion.',
+                            value: security.pinForLogin,
+                            onChanged: (value) async {
+                              if (value) {
+                                final hasPin =
+                                    await SecurityService.hasPin();
+                                if (!sheetContext.mounted) return;
+                                final created = hasPin
+                                    ? true
+                                    : await SecurityService.setPin(
+                                        sheetContext,
+                                      );
+                                if (!created) return;
+                              } else if (!security.pinForSensitive) {
+                                await SecurityService.clearPin();
+                              }
+                              preferencesController.updateWith(
+                                (current) => current.copyWith(
+                                  security: current.security.copyWith(
+                                    pinForLogin: value,
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                          _buildSwitchTile(
+                            title: 'PIN para acciones sensibles',
+                            subtitle: 'Pagos y cambios de contrasena.',
+                            value: security.pinForSensitive,
+                            onChanged: (value) async {
+                              if (value) {
+                                final hasPin =
+                                    await SecurityService.hasPin();
+                                if (!sheetContext.mounted) return;
+                                final created = hasPin
+                                    ? true
+                                    : await SecurityService.setPin(
+                                        sheetContext,
+                                      );
+                                if (!created) return;
+                              } else if (!security.pinForLogin) {
+                                await SecurityService.clearPin();
+                              }
+                              preferencesController.updateWith(
+                                (current) => current.copyWith(
+                                  security: current.security.copyWith(
+                                    pinForSensitive: value,
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    _sheetSectionTitle('Contrasena', muted),
+                    const SizedBox(height: 8),
+                    _sheetCard(
+                      cardColor: cardColor,
+                      borderColor: borderColor,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _buildInputLabel('Contrasena actual'),
+                          _buildTextField(
+                            _passwordActualController,
+                            TextInputType.visiblePassword,
+                            obscure: true,
+                          ),
+                          const SizedBox(height: 12),
+                          _buildInputLabel('Nueva contrasena'),
+                          _buildTextField(
+                            _passwordNuevaController,
+                            TextInputType.visiblePassword,
+                            obscure: true,
+                          ),
+                          const SizedBox(height: 12),
+                          _buildInputLabel('Confirmar contrasena'),
+                          _buildTextField(
+                            _passwordConfirmController,
+                            TextInputType.visiblePassword,
+                            obscure: true,
+                          ),
+                          const SizedBox(height: 16),
+                          SizedBox(
+                            width: double.infinity,
+                            child: ElevatedButton(
+                                onPressed: _changingPassword
+                                    ? null
+                                    : () async {
+                                        final saved = await _changePassword();
+                                        if (!mounted) return;
+                                        if (!sheetContext.mounted) return;
+                                        if (saved) {
+                                          Navigator.of(sheetContext).pop();
+                                        }
+                                      },
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: _primary,
+                                foregroundColor: Colors.white,
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 14),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
+                                elevation: 0,
+                              ),
+                              child: _changingPassword
+                                  ? const SizedBox(
+                                      height: 18,
+                                      width: 18,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: Colors.white,
+                                      ),
+                                    )
+                                  : const Text(
+                                      'Actualizar contrasena',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    _sheetSectionTitle('Doble factor', muted),
+                    const SizedBox(height: 8),
+                    _sheetCard(
+                      cardColor: cardColor,
+                      borderColor: borderColor,
+                      // TODO: Integrar flujo OTP/SMS cuando el backend este listo.
+                      child: _buildSwitchTile(
+                        title: '2FA (OTP/SMS)',
+                        subtitle: 'Disponible proximamente.',
+                        value: security.twoFactorEnabled,
+                        onChanged: null,
+                      ),
+                    ),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: TextButton(
+                        onPressed: () => Navigator.of(sheetContext).pop(),
+                        child: const Text('Cerrar'),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  void _openSupportSheet() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Theme.of(context).cardColor,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (sheetContext) {
+        final isDark = Theme.of(sheetContext).brightness == Brightness.dark;
+        final muted = _mutedColor(isDark);
+
+        return SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _sheetHandle(muted),
+                const SizedBox(height: 12),
+                Text(
+                  'Soporte',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    color: Theme.of(sheetContext).colorScheme.onSurface,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Contacta a la administracion de tu condominio para recibir ayuda.',
+                  style: TextStyle(
+                    fontSize: 12,
+                    height: 1.4,
+                    color: muted,
+                  ),
+                ),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton(
+                    onPressed: () => Navigator.of(sheetContext).pop(),
+                    child: const Text('Cerrar'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  void _openQuietHoursSheet(QuietHours current) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Theme.of(context).cardColor,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (sheetContext) {
+        final bottomInset = MediaQuery.of(sheetContext).viewInsets.bottom;
+        final isDark = Theme.of(sheetContext).brightness == Brightness.dark;
+        final muted = _mutedColor(isDark);
+        var enabled = current.enabled;
+        var startMinutes = current.startMinutes;
+        var endMinutes = current.endMinutes;
+        final days = [...current.days];
+
+        Future<void> pickStart() async {
+          final time = await showTimePicker(
+            context: sheetContext,
+            initialTime: _minutesToTimeOfDay(startMinutes),
+          );
+          if (time != null) {
+            startMinutes = _timeOfDayToMinutes(time);
+          }
+        }
+
+        Future<void> pickEnd() async {
+          final time = await showTimePicker(
+            context: sheetContext,
+            initialTime: _minutesToTimeOfDay(endMinutes),
+          );
+          if (time != null) {
+            endMinutes = _timeOfDayToMinutes(time);
+          }
+        }
+
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return SafeArea(
+              top: false,
+              child: SingleChildScrollView(
+                padding: EdgeInsets.fromLTRB(20, 12, 20, 24 + bottomInset),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _sheetHandle(muted),
+                    const SizedBox(height: 12),
+                    Text(
+                      'Horario silencio',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: Theme.of(sheetContext).colorScheme.onSurface,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    SwitchListTile.adaptive(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('Activar horario silencio'),
+                      subtitle: Text(
+                        'Silencia notificaciones en el rango definido.',
+                        style: TextStyle(fontSize: 12, color: muted),
+                      ),
+                      value: enabled,
+                      activeThumbColor: _primary,
+                      onChanged: (value) {
+                        setModalState(() => enabled = value);
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('Desde'),
+                      subtitle: Text(
+                        _formatMinutes(startMinutes),
+                        style: TextStyle(fontSize: 12, color: muted),
+                      ),
+                      trailing: const Icon(Icons.access_time),
+                      onTap: () async {
+                        await pickStart();
+                        setModalState(() {});
+                      },
+                    ),
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('Hasta'),
+                      subtitle: Text(
+                        _formatMinutes(endMinutes),
+                        style: TextStyle(fontSize: 12, color: muted),
+                      ),
+                      trailing: const Icon(Icons.access_time),
+                      onTap: () async {
+                        await pickEnd();
+                        setModalState(() {});
+                      },
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Dias activos',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: muted,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 6,
+                      children: _dayChips(days, setModalState),
+                    ),
+                    const SizedBox(height: 16),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: () {
+                          final updated = current.copyWith(
+                            enabled: enabled,
+                            startMinutes: startMinutes,
+                            endMinutes: endMinutes,
+                            days: days,
+                          );
+                          preferencesController.updateWith(
+                            (prefs) => prefs.copyWith(quietHours: updated),
+                          );
+                          Navigator.of(sheetContext).pop();
+                        },
+                        child: const Text('Guardar horario'),
+                      ),
+                    ),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: TextButton(
+                        onPressed: () => Navigator.of(sheetContext).pop(),
+                        child: const Text('Cerrar'),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  List<Widget> _dayChips(List<int> selected, StateSetter setModalState) {
+    const labels = {
+      1: 'Lun',
+      2: 'Mar',
+      3: 'Mie',
+      4: 'Jue',
+      5: 'Vie',
+      6: 'Sab',
+      7: 'Dom',
+    };
+    return labels.entries.map((entry) {
+      final isSelected = selected.contains(entry.key);
+      return ChoiceChip(
+        label: Text(entry.value),
+        selected: isSelected,
+        selectedColor: _primary.withValues(alpha: 0.2),
+        onSelected: (value) {
+          setModalState(() {
+            if (value) {
+              selected.add(entry.key);
+            } else {
+              selected.remove(entry.key);
+            }
+          });
+        },
+      );
+    }).toList();
+  }
+
+  List<DropdownMenuItem<String>> _favoriteDropdownItems() {
+    final items = <DropdownMenuItem<String>>[
+      const DropdownMenuItem(
+        value: _noFavoriteValue,
+        child: Text('Sin favorito'),
+      ),
+    ];
+    for (final inmueble in widget.inmuebles) {
+      items.add(
+        DropdownMenuItem(
+          value: inmueble.idInmueble,
+          child: Text(_inmuebleLabel(inmueble)),
+        ),
+      );
+    }
+    return items;
+  }
+
+  String _resolveFavoriteValue(String? favoriteId) {
+    if (favoriteId == null) return _noFavoriteValue;
+    final exists = widget.inmuebles.any(
+      (inmueble) => inmueble.idInmueble == favoriteId,
+    );
+    return exists ? favoriteId : _noFavoriteValue;
+  }
+
+  void _openContactChangeSheet({
+    required String title,
+    required String hint,
+    required String fieldLabel,
+    required ContactKind kind,
+  }) {
+    final controller = TextEditingController();
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Theme.of(context).cardColor,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (sheetContext) {
+        final bottomInset = MediaQuery.of(sheetContext).viewInsets.bottom;
+        final muted = Theme.of(sheetContext)
+                .textTheme
+                .bodySmall
+                ?.color
+                ?.withValues(alpha: 0.7) ??
+            Colors.grey;
+        return SafeArea(
+          top: false,
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(20, 12, 20, 20 + bottomInset),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _sheetHandle(muted),
+                const SizedBox(height: 12),
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    color: Theme.of(sheetContext).colorScheme.onSurface,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'Enviaremos un codigo de verificacion.',
+                  style: TextStyle(fontSize: 12, color: muted),
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: controller,
+                  keyboardType: kind == ContactKind.email
+                      ? TextInputType.emailAddress
+                      : TextInputType.phone,
+                  decoration: InputDecoration(
+                    labelText: fieldLabel,
+                    hintText: hint,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: () async {
+                      final value = controller.text.trim();
+                      if (value.isEmpty) {
+                        _showSnack('Completa el campo antes de continuar.');
+                        return;
+                      }
+                      await _requestContactVerification(kind, value);
+                      if (!sheetContext.mounted) return;
+                      Navigator.of(sheetContext).pop();
+                    },
+                    child: const Text('Enviar codigo'),
+                  ),
+                ),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton(
+                    onPressed: () => Navigator.of(sheetContext).pop(),
+                    child: const Text('Cerrar'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _requestContactVerification(
+    ContactKind kind,
+    String value,
+  ) async {
+    // TODO: Integrar endpoint para solicitar codigo y confirmar el cambio.
+    final label = kind == ContactKind.email ? 'correo' : 'telefono';
+    _showSnack('Te enviaremos un codigo al $label indicado.');
+  }
+
+  Widget _sheetSectionTitle(String title, Color muted) {
+    return Text(
+      title.toUpperCase(),
+      style: TextStyle(
+        fontSize: 11,
+        fontWeight: FontWeight.w700,
+        letterSpacing: 1.4,
+        color: muted,
+      ),
+    );
+  }
+
+  Widget _sectionMiniTitle(String title, Color muted) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+      child: Text(
+        title.toUpperCase(),
+        style: TextStyle(
+          fontSize: 10,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 1.2,
+          color: muted,
+        ),
+      ),
+    );
+  }
+
+  Widget _sheetCard({
+    required Widget child,
+    required Color cardColor,
+    required Color borderColor,
+  }) {
     return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Theme.of(context).cardColor,
-        borderRadius: BorderRadius.circular(24),
+        color: cardColor,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: borderColor),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(
-                Theme.of(context).brightness == Brightness.dark ? 0.35 : 0.04),
+            color: Colors.black.withValues(alpha: 
+              Theme.of(context).brightness == Brightness.dark ? 0.18 : 0.04,
+            ),
             blurRadius: 12,
             offset: const Offset(0, 6),
           ),
@@ -496,13 +1866,115 @@ class _UserScreenState extends State<UserScreen> {
     );
   }
 
+  Widget _buildSwitchTile({
+    required String title,
+    String? subtitle,
+    required bool value,
+    ValueChanged<bool>? onChanged,
+  }) {
+    return SwitchListTile.adaptive(
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+      title: Text(title),
+      subtitle: subtitle != null ? Text(subtitle) : null,
+      value: value,
+      activeThumbColor: _primary,
+      onChanged: onChanged,
+    );
+  }
+
+  String _quietHoursSummary(QuietHours quietHours) {
+    if (!quietHours.enabled || quietHours.days.isEmpty) {
+      return 'Desactivado';
+    }
+    final range =
+        '${_formatMinutes(quietHours.startMinutes)} - ${_formatMinutes(quietHours.endMinutes)}';
+    final days = _formatDays(quietHours.days);
+    return '$range • $days';
+  }
+
+  String _quietHoursStatus(QuietHours quietHours) {
+    if (!quietHours.enabled || quietHours.days.isEmpty) return 'Desactivado';
+    return quietHours.isActive(DateTime.now()) ? 'Activo ahora' : 'Inactivo';
+  }
+
+  String _formatMinutes(int minutes) {
+    final hours = (minutes ~/ 60).toString().padLeft(2, '0');
+    final mins = (minutes % 60).toString().padLeft(2, '0');
+    return '$hours:$mins';
+  }
+
+  String _formatDays(List<int> days) {
+    const labels = {
+      1: 'Lun',
+      2: 'Mar',
+      3: 'Mie',
+      4: 'Jue',
+      5: 'Vie',
+      6: 'Sab',
+      7: 'Dom',
+    };
+    final sorted = [...days]..sort();
+    return sorted.map((day) => labels[day] ?? '').join(', ');
+  }
+
+  TimeOfDay _minutesToTimeOfDay(int minutes) {
+    return TimeOfDay(hour: minutes ~/ 60, minute: minutes % 60);
+  }
+
+  int _timeOfDayToMinutes(TimeOfDay time) {
+    return time.hour * 60 + time.minute;
+  }
+
+  String _inmuebleLabel(Inmueble inmueble) {
+    final identificacion = inmueble.identificacion?.trim();
+    if (identificacion != null && identificacion.isNotEmpty) {
+      return identificacion;
+    }
+    final correlativo = inmueble.correlativo?.trim();
+    if (correlativo != null && correlativo.isNotEmpty) {
+      return 'Inmueble $correlativo';
+    }
+    final torre = inmueble.torre?.trim();
+    final piso = inmueble.piso?.trim();
+    if (torre != null && torre.isNotEmpty && piso != null && piso.isNotEmpty) {
+      return 'Torre $torre - Piso $piso';
+    }
+    final nombre = inmueble.nombreCondominio?.trim();
+    if (nombre != null && nombre.isNotEmpty) {
+      return nombre;
+    }
+    return 'Inmueble ${inmueble.idInmueble}';
+  }
+
+  Widget _sheetHandle(Color muted) {
+    return Center(
+      child: Container(
+        width: 40,
+        height: 4,
+        decoration: BoxDecoration(
+          color: muted.withValues(alpha: 0.35),
+          borderRadius: BorderRadius.circular(999),
+        ),
+      ),
+    );
+  }
+
+  Color _cardColor(bool isDark) => isDark ? _cardDark : _cardLight;
+
+  Color _borderColor(bool isDark) =>
+      isDark ? Colors.white.withValues(alpha: 0.08) : _borderLight;
+
+  Color _mutedColor(bool isDark) =>
+      isDark ? _textMutedDark : _textMutedLight;
+
   Widget _buildInputLabel(String text) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Text(
       text,
-      style: const TextStyle(
-        fontSize: 14,
+      style: TextStyle(
+        fontSize: 12,
         fontWeight: FontWeight.w600,
-        color: Color(0xff475467),
+        color: _mutedColor(isDark),
       ),
     );
   }
@@ -514,35 +1986,28 @@ class _UserScreenState extends State<UserScreen> {
   }) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
+    final borderColor = _borderColor(isDark);
     return TextField(
       controller: controller,
       keyboardType: type,
       obscureText: obscure,
       style: TextStyle(color: theme.colorScheme.onSurface),
-      cursorColor: theme.colorScheme.primary,
+      cursorColor: _primary,
       decoration: InputDecoration(
         filled: true,
-        fillColor: isDark ? const Color(0xff1f222c) : const Color(0xfff5f6fa),
+        fillColor: isDark ? const Color(0xff262626) : const Color(0xffF1F5F9),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
-          borderSide: BorderSide(
-            color: isDark
-                ? Colors.white.withOpacity(0.08)
-                : Colors.black.withOpacity(0.05),
-          ),
+          borderSide: BorderSide(color: borderColor),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
-          borderSide: BorderSide(
-            color: isDark
-                ? Colors.white.withOpacity(0.08)
-                : Colors.black.withOpacity(0.05),
-          ),
+          borderSide: BorderSide(color: borderColor),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
-          borderSide: BorderSide(
-            color: theme.colorScheme.primary,
+          borderSide: const BorderSide(
+            color: _primary,
             width: 1.4,
           ),
         ),
@@ -554,6 +2019,8 @@ class _UserScreenState extends State<UserScreen> {
     );
   }
 }
+
+enum ContactKind { email, phone }
 
 
 

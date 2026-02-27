@@ -47,24 +47,6 @@ try {
     respond_error($e->getMessage(), 400);
 }
 
-function resolve_user_id_from_token(PDO $conn, string $token): int {
-    $stmt = $conn->prepare("
-        SELECT user_id
-        FROM menu_login.tokens
-        WHERE token = :token
-          AND expires_at > NOW()
-        LIMIT 1
-    ");
-    $stmt->execute([":token" => $token]);
-    $row = $stmt->fetch(PDO::FETCH_ASSOC);
-
-    if (!$row) {
-        throw new Exception("Token inválido");
-    }
-
-    return (int) $row['user_id'];
-}
-
 function send_profile(PDO $conn, int $userId): void {
     $stmt = $conn->prepare("
         SELECT id_usuario, nombre, apellido, correo
@@ -168,3 +150,4 @@ function update_avatar(PDO $conn, int $userId, array $input): void {
         "avatar_url" => $url
     ]);
 }
+

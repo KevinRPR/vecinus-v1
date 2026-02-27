@@ -16,22 +16,6 @@ function assert_required(array $data, array $keys): void
     }
 }
 
-function get_user_from_token(PDO $conn, string $token): int
-{
-    $stmt = $conn->prepare("
-        SELECT user_id
-        FROM menu_login.tokens
-        WHERE token = :token
-          AND expires_at > NOW()
-        LIMIT 1
-    ");
-    $stmt->execute([":token" => $token]);
-    $row = $stmt->fetch(PDO::FETCH_ASSOC);
-    if (!$row || !isset($row["user_id"])) {
-        respond_error("Token invalido o expirado.", 401);
-    }
-    return (int)$row["user_id"];
-}
 
 function get_inmueble(PDO $conn, int $userId, int $idInmueble): array
 {
@@ -241,7 +225,7 @@ try {
         respond_error("Token requerido.", 400);
     }
 
-    $userId = get_user_from_token($conn, $token);
+    $userId = resolve_user_id_from_token($conn, $token);
     ensure_tables($conn);
     ensure_columns($conn);
 
@@ -427,5 +411,7 @@ try {
         respond_error("Accion no soportada.", 400);
     }
 } catch (Exception $e) {
-    respond_error($e->getMessage(), 500);
+    $lower = strtolower($e->getMessage());
+    $status = (strpos($lower, 'token') !== false) ? 401 : 500;
+    respond_error($e->getMessage(), $status);
 }

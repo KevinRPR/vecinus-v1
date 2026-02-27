@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:lottie/lottie.dart';
 
-import 'app_animations.dart';
-
 /// Subtle horizontal shake for error states.
 class ShakeOnError extends StatefulWidget {
   final Widget child;

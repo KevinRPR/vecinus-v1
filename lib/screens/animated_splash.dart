@@ -51,6 +51,7 @@ class _AnimatedSplashScreenState extends State<AnimatedSplashScreen>
         return;
       } else {
         await AuthService.logout();
+        if (!mounted) return;
       }
     }
 
@@ -72,10 +73,10 @@ class _AnimatedSplashScreenState extends State<AnimatedSplashScreen>
         animation: _controller,
         builder: (context, child) {
           final t = Curves.easeInOut.transform(_controller.value);
-          final colors = [
-            const Color(0xff1d9bf0),
-            const Color(0xff0a0f1f),
-            const Color(0xffeff2ff),
+          const colors = [
+            Color(0xff1d9bf0),
+            Color(0xff0a0f1f),
+            Color(0xffeff2ff),
           ];
 
           return Container(
@@ -163,11 +164,11 @@ class _WavePainter extends CustomPainter {
     final paint = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1.6
-      ..color = Colors.white.withOpacity(0.15);
+      ..color = Colors.white.withValues(alpha: 0.15);
 
     final path = Path();
-    final amplitude = 18.0;
-    final frequency = 1.5;
+    const amplitude = 18.0;
+    const frequency = 1.5;
 
     for (double x = 0; x <= size.width; x++) {
       final y = size.height * 0.65 +

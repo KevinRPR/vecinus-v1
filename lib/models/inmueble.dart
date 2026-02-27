@@ -114,7 +114,6 @@ class Inmueble {
       case EstadoInmueble.moroso:
         return 3;
       case EstadoInmueble.desconocido:
-      default:
         return 0;
     }
   }

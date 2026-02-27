@@ -16,7 +16,7 @@ if ($token === "") {
 }
 
 try {
-    $userId = get_user_id_from_token($conn, $token);
+    $userId = resolve_user_id_from_token($conn, $token);
     $inmuebles = fetch_inmuebles($conn, $userId);
 
     if (empty($inmuebles)) {
@@ -30,26 +30,9 @@ try {
         __DIR__ . "/debug_error.txt",
         "ERROR mis_inmuebles: " . $e->getMessage()
     );
-    respond_error("Error consultando inmuebles.", 500);
-}
-
-function get_user_id_from_token(PDO $conn, string $token): int
-{
-    $stmt = $conn->prepare("
-        SELECT user_id
-        FROM menu_login.tokens
-        WHERE token = :token
-          AND expires_at > NOW()
-        LIMIT 1
-    ");
-    $stmt->execute([":token" => $token]);
-    $row = $stmt->fetch(PDO::FETCH_ASSOC);
-
-    if (!$row || !isset($row["user_id"])) {
-        throw new Exception("Token invalido o expirado.");
-    }
-
-    return (int)$row["user_id"];
+    $lower = strtolower($e->getMessage());
+    $status = (strpos($lower, 'token') !== false) ? 401 : 500;
+    respond_error($e->getMessage(), $status);
 }
 
 function fetch_inmuebles(PDO $conn, int $userId): array
@@ -103,6 +86,7 @@ function enrich_with_cxc(PDO $conn, array $inmuebles): array
             nc.descripcion,
             nc.monto_total,
             nc.monto_pagado,
+            COALESCE(nc.monto_x_pagar, nc.monto_total - nc.monto_pagado) AS monto_x_pagar,
             nc.estado,
             nc.token,
             rc.token AS token_recibo,
@@ -117,6 +101,21 @@ function enrich_with_cxc(PDO $conn, array $inmuebles): array
     $stmt = $conn->prepare($sql);
     $stmt->execute($ids);
     $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    $notificaciones = [];
+    foreach ($rows as $row) {
+        $notifId = $row["id_notificacion"] ?? null;
+        if ($notifId === null) {
+            continue;
+        }
+        if (!isset($notificaciones[$notifId])) {
+            $notificaciones[$notifId] = $row;
+            continue;
+        }
+        $current = $notificaciones[$notifId];
+        if (empty($current["token_recibo"]) && !empty($row["token_recibo"])) {
+            $notificaciones[$notifId] = $row;
+        }
+    }
 
     // Acumulador por inmueble
     $map = [];
@@ -129,21 +128,25 @@ function enrich_with_cxc(PDO $conn, array $inmuebles): array
         ]);
     }
 
-    foreach ($rows as $row) {
+    foreach ($notificaciones as $row) {
         $id = $row["id_inmueble"];
         if (!isset($map[$id])) {
             continue;
         }
 
-        $estado = strtolower(trim($row["estado"] ?? ""));
+        $estadoRaw = strtolower(trim((string)($row["estado"] ?? "")));
         $montoTotal = (float)($row["monto_total"] ?? 0);
         $montoPagado = (float)($row["monto_pagado"] ?? 0);
-        $pendiente = max($montoTotal - $montoPagado, 0);
+        $montoPendiente = isset($row["monto_x_pagar"])
+            ? (float)$row["monto_x_pagar"]
+            : ($montoTotal - $montoPagado);
+        $pendiente = max($montoPendiente, 0);
+        $isPagada = $pendiente <= 0 || (strpos($estadoRaw, 'pagad') !== false);
         $fechaEmision = $row["fecha_emision"] ?? null;
         $fechaVencimiento = $row["fecha_vencimiento"] ?? null;
         $fechaReferencia = $fechaVencimiento ?: $fechaEmision;
 
-        if ($estado !== "pagada") {
+        if (!$isPagada && $pendiente > 0) {
             $map[$id]["deuda_actual"] += $pendiente;
             if ($fechaReferencia) {
                 $actual = $map[$id]["proxima_fecha_pago"];
@@ -153,7 +156,7 @@ function enrich_with_cxc(PDO $conn, array $inmuebles): array
             }
         }
 
-        $pagoMonto = $estado === "pagada"
+        $pagoMonto = $isPagada
             ? ($montoPagado > 0 ? $montoPagado : $montoTotal)
             : ($pendiente > 0 ? $pendiente : $montoTotal);
 
