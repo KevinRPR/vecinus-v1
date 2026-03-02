@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html class="light" lang="es"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Vecinus - Pagos</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,typography,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script>
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        primary: "#548C8C",
+                        "background-light": "#F9FAFB",
+                        "background-dark": "#111827",
+                        "card-light": "#FFFFFF",
+                        "card-dark": "#1F2937",
+                    },
+                    fontFamily: {
+                        display: ["Inter", "sans-serif"],
+                    },
+                    borderRadius: {
+                        DEFAULT: "16px",
+                    },
+                },
+            },
+        };
+    </script>
+<style type="text/tailwindcss">
+        body { font-family: 'Inter', sans-serif; }
+        .active-tab { background-color: #548C8C; color: white; }
+        .scrollbar-hide::-webkit-scrollbar { display: none; }
+        .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background-light dark:bg-background-dark text-slate-900 dark:text-slate-100 min-h-screen pb-32">
+<header class="sticky top-0 z-50 bg-white/80 dark:bg-gray-900/80 backdrop-blur-md px-6 py-4 border-b border-slate-100 dark:border-slate-800">
+<div class="flex items-center justify-between max-w-lg mx-auto">
+<div class="flex flex-col">
+<h1 class="text-3xl font-extrabold tracking-tight text-slate-900 dark:text-white">Pagos</h1>
+<p class="text-xs font-medium text-slate-500 dark:text-slate-400">2 inmuebles registrados</p>
+</div>
+<div class="flex items-center gap-2">
+<button class="p-2.5 bg-slate-100 dark:bg-slate-800 rounded-full text-slate-600 dark:text-yellow-400 transition-colors" onclick="document.documentElement.classList.toggle('dark')">
+<span class="material-symbols-outlined text-[22px]">dark_mode</span>
+</button>
+<button class="p-2.5 bg-slate-100 dark:bg-slate-800 rounded-full text-slate-600 dark:text-slate-400 transition-colors">
+<span class="material-symbols-outlined text-[22px]">help_outline</span>
+</button>
+</div>
+</div>
+</header>
+<main class="px-6 pt-6 space-y-6 max-w-lg mx-auto">
+<section class="bg-card-light dark:bg-card-dark p-6 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-800 relative overflow-hidden">
+<div class="relative z-10">
+<h2 class="text-slate-500 dark:text-slate-400 font-medium text-sm mb-1 uppercase tracking-wider">Total adeudado</h2>
+<div class="flex items-end justify-between">
+<div>
+<span class="text-4xl font-extrabold text-slate-900 dark:text-white tracking-tight">$0.00</span>
+<div class="flex items-center gap-2 mt-4 text-slate-600 dark:text-slate-400">
+<span class="material-symbols-outlined text-lg">domain</span>
+<span class="font-medium text-sm">Cuentas al día</span>
+</div>
+</div>
+<div class="w-14 h-14 rounded-full bg-green-50 dark:bg-green-900/20 flex items-center justify-center">
+<span class="material-symbols-outlined text-green-500 text-3xl font-bold">check</span>
+</div>
+</div>
+<div class="mt-6 pt-4 border-t border-slate-100 dark:border-slate-700">
+<p class="text-[10px] text-slate-400 dark:text-slate-500 font-medium uppercase tracking-widest">Actualizado: Hoy 18:58</p>
+</div>
+</div>
+<div class="absolute -top-10 -right-10 w-32 h-32 bg-primary/5 rounded-full blur-3xl"></div>
+</section>
+<nav class="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
+<button class="px-6 py-2.5 rounded-full text-sm font-semibold active-tab transition-all shadow-sm whitespace-nowrap">
+            Pendiente
+        </button>
+<button class="px-6 py-2.5 rounded-full text-sm font-semibold bg-white dark:bg-gray-800 text-slate-600 dark:text-slate-300 border border-slate-100 dark:border-slate-700 transition-all hover:bg-slate-50 dark:hover:bg-slate-700 shadow-sm whitespace-nowrap">
+            Pagado
+        </button>
+<button class="px-6 py-2.5 rounded-full text-sm font-semibold bg-white dark:bg-gray-800 text-slate-600 dark:text-slate-300 border border-slate-100 dark:border-slate-700 transition-all hover:bg-slate-50 dark:hover:bg-slate-700 shadow-sm whitespace-nowrap">
+            Todos
+        </button>
+</nav>
+<div class="space-y-4">
+<div class="flex items-center justify-between px-1">
+<h3 class="text-xs font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500">Detalle por inmueble</h3>
+</div>
+<p class="text-xs font-bold text-slate-400 dark:text-slate-500 mt-6 mb-2">EDIF. VILLAS DEL PARQUE</p>
+<div class="bg-card-light dark:bg-card-dark p-5 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800 group hover:border-primary/30 transition-all">
+<div class="flex items-start justify-between mb-4">
+<div class="flex items-center gap-4">
+<div class="w-12 h-12 rounded-xl bg-slate-50 dark:bg-slate-800 flex items-center justify-center text-slate-400">
+<span class="material-symbols-outlined">apartment</span>
+</div>
+<div>
+<h4 class="font-bold text-slate-800 dark:text-white text-lg leading-tight">PH1</h4>
+<p class="text-sm text-slate-400">Unidad 1</p>
+</div>
+</div>
+<span class="bg-green-50 dark:bg-green-900/30 text-green-600 dark:text-green-400 text-[10px] font-bold px-3 py-1 rounded-full uppercase tracking-wider">
+                    Al día
+                </span>
+</div>
+<div class="flex items-center justify-between pt-4 border-t border-slate-50 dark:border-slate-800">
+<div>
+<p class="text-[10px] text-slate-400 uppercase tracking-tighter font-bold mb-0.5">Deuda</p>
+<p class="text-xl font-bold text-slate-900 dark:text-white">$0.00</p>
+</div>
+<a class="flex items-center gap-1 text-primary text-sm font-bold group-hover:translate-x-1 transition-transform" href="#">
+                    Ver detalle
+                    <span class="material-symbols-outlined text-lg">chevron_right</span>
+</a>
+</div>
+</div>
+<div class="bg-card-light dark:bg-card-dark p-5 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800 group hover:border-primary/30 transition-all">
+<div class="flex items-start justify-between mb-4">
+<div class="flex items-center gap-4">
+<div class="w-12 h-12 rounded-xl bg-slate-50 dark:bg-slate-800 flex items-center justify-center text-slate-400">
+<span class="material-symbols-outlined">home</span>
+</div>
+<div>
+<h4 class="font-bold text-slate-800 dark:text-white text-lg leading-tight">CASA 05</h4>
+<p class="text-sm text-slate-400">Manzana B</p>
+</div>
+</div>
+<span class="bg-green-50 dark:bg-green-900/30 text-green-600 dark:text-green-400 text-[10px] font-bold px-3 py-1 rounded-full uppercase tracking-wider">
+                    Al día
+                </span>
+</div>
+<div class="flex items-center justify-between pt-4 border-t border-slate-50 dark:border-slate-800">
+<div>
+<p class="text-[10px] text-slate-400 uppercase tracking-tighter font-bold mb-0.5">Deuda</p>
+<p class="text-xl font-bold text-slate-900 dark:text-white">$0.00</p>
+</div>
+<a class="flex items-center gap-1 text-primary text-sm font-bold group-hover:translate-x-1 transition-transform" href="#">
+                    Ver detalle
+                    <span class="material-symbols-outlined text-lg">chevron_right</span>
+</a>
+</div>
+</div>
+</div>
+</main>
+<div class="fixed bottom-24 left-0 right-0 px-6 max-w-lg mx-auto z-40">
+<button class="w-full bg-primary hover:bg-primary/90 text-white font-bold py-4 rounded-2xl shadow-lg shadow-primary/25 flex items-center justify-center gap-3 transition-transform active:scale-95">
+<span class="material-symbols-outlined">payments</span>
+        Pagar ahora
+    </button>
+</div>
+<nav class="fixed bottom-0 left-0 right-0 bg-white/95 dark:bg-gray-900/95 backdrop-blur-lg border-t border-slate-100 dark:border-slate-800 px-4 py-3 pb-8 flex justify-around items-center z-50">
+<a class="flex flex-col items-center gap-1 text-slate-400 dark:text-slate-500 hover:text-primary transition-colors" href="#">
+<span class="material-symbols-outlined">home</span>
+<span class="text-[10px] font-bold">Inicio</span>
+</a>
+<a class="flex flex-col items-center gap-1 text-primary transition-colors" href="#">
+<div class="bg-primary/10 p-1.5 px-4 rounded-full flex flex-col items-center">
+<span class="material-symbols-outlined">account_balance_wallet</span>
+<span class="text-[10px] font-bold">Pagos</span>
+</div>
+</a>
+<a class="flex flex-col items-center gap-1 text-slate-400 dark:text-slate-500 hover:text-primary transition-colors relative" href="#">
+<span class="material-symbols-outlined">notifications</span>
+<span class="text-[10px] font-bold">Alertas</span>
+<span class="absolute top-0 right-1 w-2 h-2 bg-red-500 rounded-full border-2 border-white dark:border-gray-900"></span>
+</a>
+<a class="flex flex-col items-center gap-1 text-slate-400 dark:text-slate-500 hover:text-primary transition-colors" href="#">
+<span class="material-symbols-outlined">person</span>
+<span class="text-[10px] font-bold">Perfil</span>
+</a>
+</nav>
+
+</body></html>

@@ -60,7 +60,6 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Historial de pagos'),
-        centerTitle: true,
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(24),
           child: Padding(

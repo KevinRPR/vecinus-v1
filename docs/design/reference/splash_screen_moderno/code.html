@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="es"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Vecinus - Splash Screen</title>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,typography,container-queries"></script>
+<style type="text/tailwindcss">
+        :root {
+            --primary: #548D88;
+            --background-light: #F8FAFC;
+            --background-dark: #0F172A;
+            --accent-orange: #F3A571;
+            --secondary-blue: #2D4B6A;
+            --ios-header-height: 44px;
+            --ios-status-bar: 47px;
+        }
+        body {
+            font-family: 'Manrope', sans-serif;
+            -webkit-tap-highlight-color: transparent;
+            background-color: var(--background-light);
+        }
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .progress-shimmer {
+            background: linear-gradient(
+                90deg,
+                rgba(255, 255, 255, 0) 0%,
+                rgba(255, 255, 255, 0.4) 50%,
+                rgba(255, 255, 255, 0) 100%
+            );
+            background-size: 200% 100%;
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="min-h-screen flex flex-col items-center overflow-hidden">
+<header class="w-full flex items-center justify-center pt-[var(--ios-status-bar)] h-[calc(var(--ios-status-bar)+var(--ios-header-height))] bg-[var(--background-light)] z-10">
+</header>
+<main class="flex-1 flex flex-col items-center justify-center px-8 text-center w-full">
+<div class="flex flex-col items-center justify-center">
+<div class="relative w-32 h-32 mb-6 flex items-center justify-center">
+<svg class="w-24 h-24" viewBox="0 0 100 100">
+<path class="text-[var(--primary)]" d="M50 15L15 45V85H40V65H60V85H85V45L50 15Z" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="8"></path>
+<circle class="fill-[var(--accent-orange)]" cx="50" cy="15" r="8"></circle>
+<path class="text-[var(--secondary-blue)]" d="M40 85V65H60V85" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="8"></path>
+</svg>
+</div>
+<h1 class="text-4xl font-extrabold text-[var(--secondary-blue)] tracking-tight mb-3">
+                vecinus
+            </h1>
+<p class="text-lg font-medium text-slate-500 max-w-xs leading-relaxed">
+                Tu condominio, claro y en orden.
+            </p>
+</div>
+</main>
+<footer class="w-full max-w-xs pb-16 px-4 space-y-6">
+<div class="flex flex-col items-center space-y-3">
+<span class="text-sm font-semibold text-slate-400 uppercase tracking-widest">
+                Preparando tu espacio...
+            </span>
+<div class="w-full h-1.5 bg-slate-200 rounded-full overflow-hidden relative">
+<div class="absolute top-0 left-0 h-full w-[65%] bg-[var(--primary)] rounded-full"></div>
+</div>
+</div>
+<div class="flex items-center justify-center gap-2 text-[var(--primary)] opacity-60">
+<span class="material-symbols-outlined text-lg">verified_user</span>
+<span class="text-xs font-bold tracking-wide">SMART GUARDIAN ACTIVE</span>
+</div>
+</footer>
+<div class="h-8"></div>
+
+</body></html>

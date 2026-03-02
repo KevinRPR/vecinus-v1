@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html class="light" lang="es"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Perfil de Usuario - Vecinus</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,typography,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script>
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        primary: "#4F8B8B",
+                        "background-light": "#F8F9FA",
+                        "background-dark": "#121212",
+                        "card-light": "#FFFFFF",
+                        "card-dark": "#1E1E1E",
+                    },
+                    fontFamily: {
+                        sans: ["Inter", "sans-serif"],
+                    },
+                    borderRadius: {
+                        DEFAULT: "1rem",
+                    },
+                },
+            },
+        };
+        function toggleDarkMode() {
+            document.documentElement.classList.toggle('dark');
+        }
+    </script>
+<style type="text/tailwindcss">
+        @layer base {
+            body {
+                -webkit-tap-highlight-color: transparent;
+                @apply bg-background-light dark:bg-background-dark text-slate-900 dark:text-slate-100;
+            }
+        }
+        .nav-shadow {
+            box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.05);
+        }
+        .header-blur {
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="min-h-screen pb-24">
+<header class="sticky top-0 z-50 w-full bg-white/70 dark:bg-background-dark/70 header-blur border-b border-slate-100/50 dark:border-slate-800/50">
+<div class="h-16 px-6 flex items-center justify-between max-w-lg mx-auto">
+<h1 class="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">Mi perfil</h1>
+<button class="w-10 h-10 flex items-center justify-center rounded-full bg-slate-100/80 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300 active:scale-95 transition-transform" onclick="toggleDarkMode()">
+<span class="material-symbols-outlined">dark_mode</span>
+</button>
+</div>
+</header>
+<main class="max-w-lg mx-auto px-5 pt-6 space-y-6">
+<section class="bg-card-light dark:bg-card-dark p-6 rounded-[2rem] shadow-sm border border-slate-100 dark:border-slate-800 text-center relative overflow-hidden">
+<div class="absolute top-0 left-0 w-full h-1 bg-primary"></div>
+<div class="relative inline-block mb-4">
+<div class="w-24 h-24 rounded-full border-4 border-primary/10 p-1">
+<img alt="Avatar del usuario" class="w-full h-full rounded-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBCdCzQilQx_LQ7TI3YKs3yqhLs7j1Onbcf9pHPDSzqXtfgPHHhIzOSqjiyZkyehYCf5Eef-Me_UBZB2rsy2XhQbC1sC9pfrhZE4ms84SPOgSZ-Gbi81KW2x5PnE7BpYY6y4S-meFi378gGrf5dcyavYmiAeyN6C7GCZDRdjckMXAlkS8t_3pcCxQV0rkTIPFLsmMBKbAWqMRvGiRVqJZdSVGOMzlx7OxjNNG-x7KgrNzdrvEO8N0iSJRUpRejc3GCd2lI4RsABcJw"/>
+</div>
+<button class="absolute bottom-0 right-0 bg-primary text-white p-2 rounded-full shadow-lg border-2 border-white dark:border-card-dark flex items-center justify-center active:scale-90 transition-transform">
+<span class="material-icons-round text-sm">photo_camera</span>
+</button>
+</div>
+<h2 class="text-2xl font-bold tracking-tight">Roger Palencia</h2>
+<p class="text-slate-500 dark:text-slate-400 text-sm mt-1">PH1 • Villas del Parque</p>
+<p class="text-slate-400 dark:text-slate-500 text-xs mt-1">rogerpalencia@gmail.com</p>
+</section>
+<section>
+<h3 class="text-[11px] font-bold uppercase tracking-[0.15em] text-slate-400 dark:text-slate-500 px-4 mb-3">Configuración</h3>
+<div class="bg-card-light dark:bg-card-dark rounded-[2rem] overflow-hidden border border-slate-100 dark:border-slate-800 shadow-sm">
+<button class="w-full flex items-center justify-between p-4 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors border-b border-slate-100 dark:border-slate-800">
+<div class="flex items-center gap-4">
+<div class="bg-blue-50 dark:bg-blue-900/20 p-2.5 rounded-xl">
+<span class="material-symbols-outlined text-blue-600 dark:text-blue-400">settings</span>
+</div>
+<div class="text-left">
+<span class="block font-semibold text-slate-800 dark:text-slate-200">Preferencias</span>
+<span class="text-xs text-slate-500 dark:text-slate-400">Notificaciones, idioma...</span>
+</div>
+</div>
+<span class="material-icons-round text-slate-300 dark:text-slate-600">chevron_right</span>
+</button>
+<button class="w-full flex items-center justify-between p-4 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors border-b border-slate-100 dark:border-slate-800">
+<div class="flex items-center gap-4">
+<div class="bg-purple-50 dark:bg-purple-900/20 p-2.5 rounded-xl">
+<span class="material-symbols-outlined text-purple-600 dark:text-purple-400">security</span>
+</div>
+<div class="text-left">
+<span class="block font-semibold text-slate-800 dark:text-slate-200">Seguridad</span>
+<span class="text-xs text-slate-500 dark:text-slate-400">Contraseña y acceso</span>
+</div>
+</div>
+<span class="material-icons-round text-slate-300 dark:text-slate-600">chevron_right</span>
+</button>
+<button class="w-full flex items-center justify-between p-4 hover:bg-red-50 dark:hover:bg-red-900/10 transition-colors">
+<div class="flex items-center gap-4">
+<div class="bg-red-50 dark:bg-red-900/20 p-2.5 rounded-xl">
+<span class="material-symbols-outlined text-red-600 dark:text-red-400">logout</span>
+</div>
+<div class="text-left text-red-600 dark:text-red-400">
+<span class="block font-semibold">Cerrar sesión</span>
+</div>
+</div>
+</button>
+</div>
+</section>
+<section class="bg-primary/5 dark:bg-primary/10 rounded-[2rem] p-6 border border-primary/20">
+<div class="flex items-start gap-4">
+<div class="bg-primary text-white p-3 rounded-2xl shrink-0">
+<span class="material-symbols-outlined">support_agent</span>
+</div>
+<div class="flex-1">
+<h4 class="font-bold text-lg mb-1">Estamos aquí para ayudarte</h4>
+<p class="text-sm text-slate-600 dark:text-slate-400 mb-5 leading-relaxed">Nuestro equipo de soporte está disponible para asistirte con cualquier duda.</p>
+<button class="w-full bg-primary hover:brightness-110 active:scale-[0.98] text-white font-bold py-3.5 px-6 rounded-2xl shadow-lg shadow-primary/20 transition-all flex items-center justify-center gap-2">
+                    Contactar Soporte
+                </button>
+</div>
+</div>
+</section>
+<div class="text-center py-6">
+<p class="text-[10px] uppercase tracking-widest text-slate-400 dark:text-slate-600 font-medium">Vecinus App v2.4.0</p>
+</div>
+</main>
+<nav class="fixed bottom-0 left-0 right-0 bg-white/90 dark:bg-card-dark/90 header-blur border-t border-slate-100 dark:border-slate-800 nav-shadow px-8 pt-3 pb-8 flex justify-between items-center z-50 max-w-lg mx-auto">
+<button class="flex flex-col items-center gap-1 group">
+<span class="material-symbols-outlined text-slate-400 group-hover:text-primary transition-colors">home</span>
+<span class="text-[10px] font-medium text-slate-400 group-hover:text-primary">Inicio</span>
+</button>
+<button class="flex flex-col items-center gap-1 group">
+<span class="material-symbols-outlined text-slate-400 group-hover:text-primary transition-colors">account_balance_wallet</span>
+<span class="text-[10px] font-medium text-slate-400 group-hover:text-primary">Pagos</span>
+</button>
+<button class="flex flex-col items-center gap-1 group">
+<span class="material-symbols-outlined text-slate-400 group-hover:text-primary transition-colors">notifications</span>
+<span class="text-[10px] font-medium text-slate-400 group-hover:text-primary">Alertas</span>
+</button>
+<button class="flex flex-col items-center gap-1">
+<div class="bg-primary text-white p-1.5 rounded-xl mb-0.5">
+<span class="material-symbols-outlined text-[20px] font-bold">person</span>
+</div>
+<span class="text-[10px] font-bold text-primary">Perfil</span>
+</button>
+</nav>
+
+</body></html>

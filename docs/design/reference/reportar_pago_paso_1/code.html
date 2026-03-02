@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html class="light" lang="es"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Reportar Pago - Vecinus</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,typography,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script>
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        primary: "#518C8A",
+                        "background-light": "#F9FAFB",
+                        "background-dark": "#121212",
+                        "card-light": "#FFFFFF",
+                        "card-dark": "#1E1E1E",
+                    },
+                    fontFamily: {
+                        sans: ["Inter", "sans-serif"],
+                    },
+                    borderRadius: {
+                        DEFAULT: "1.25rem",
+                    },
+                },
+            },
+        };
+    </script>
+<style type="text/tailwindcss">
+        @layer base {
+            body {
+                -webkit-tap-highlight-color: transparent;
+                min-height: max(884px, 100dvh);
+            }
+        }
+        .stepper-line {
+            height: 2px;
+            flex-grow: 1;
+            background-color: #E5E7EB;
+        }
+        .dark .stepper-line {
+            background-color: #374151;
+        }
+        .active-step-line {
+            background-color: #518C8A;
+        }
+        input::-webkit-outer-spin-button,
+        input::-webkit-inner-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+        }
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background-light dark:bg-background-dark text-slate-900 dark:text-slate-100 min-h-screen font-sans">
+<header class="sticky top-0 z-20 bg-background-light/90 dark:bg-background-dark/90 backdrop-blur-xl border-b border-slate-100 dark:border-slate-800/50">
+<div class="flex items-center justify-between px-4 h-16 pt-2">
+<button class="w-10 h-10 flex items-center justify-start text-slate-700 dark:text-slate-300 active:opacity-50 transition-opacity">
+<span class="material-symbols-outlined text-2xl">arrow_back_ios_new</span>
+</button>
+<h1 class="text-[17px] font-semibold tracking-tight">Reportar Pago</h1>
+<div class="w-10"></div> 
+</div>
+<div class="px-6 pb-5 pt-2">
+<div class="flex items-center justify-between">
+<div class="flex flex-col items-center gap-1.5 flex-1">
+<div class="w-7 h-7 rounded-full bg-primary text-white flex items-center justify-center text-[13px] font-bold shadow-sm">1</div>
+<span class="text-[11px] font-semibold text-primary uppercase tracking-wider">Monto</span>
+</div>
+<div class="stepper-line mb-5"></div>
+<div class="flex flex-col items-center gap-1.5 flex-1 opacity-40">
+<div class="w-7 h-7 rounded-full bg-slate-200 dark:bg-slate-800 text-slate-500 flex items-center justify-center text-[13px] font-bold">2</div>
+<span class="text-[11px] font-medium text-slate-500 uppercase tracking-wider">Banco</span>
+</div>
+<div class="stepper-line mb-5"></div>
+<div class="flex flex-col items-center gap-1.5 flex-1 opacity-40">
+<div class="w-7 h-7 rounded-full bg-slate-200 dark:bg-slate-800 text-slate-500 flex items-center justify-center text-[13px] font-bold">3</div>
+<span class="text-[11px] font-medium text-slate-500 uppercase tracking-wider">Recibo</span>
+</div>
+</div>
+</div>
+</header>
+<main class="px-6 py-8 pb-32">
+<div class="mb-8">
+<h2 class="text-2xl font-bold mb-2">Ingresa el monto</h2>
+<p class="text-slate-500 dark:text-slate-400 text-sm">Indica el valor exacto de la transferencia o depósito realizado.</p>
+</div>
+<div class="bg-card-light dark:bg-card-dark rounded-3xl p-6 shadow-sm border border-slate-100 dark:border-slate-800 mb-8 transition-all">
+<label class="text-[11px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500 mb-3 block" for="amount">Saldo a reportar (USD)</label>
+<div class="flex items-center">
+<span class="text-4xl font-bold text-slate-300 dark:text-slate-600 mr-2">$</span>
+<input autofocus="" class="w-full bg-transparent border-none p-0 text-5xl font-bold text-slate-900 dark:text-white focus:ring-0 placeholder-slate-200 dark:placeholder-slate-800" id="amount" placeholder="0.00" step="0.01" type="number"/>
+</div>
+<div class="mt-5 flex items-center gap-2 text-amber-600 dark:text-amber-500 bg-amber-50 dark:bg-amber-950/30 p-3.5 rounded-2xl">
+<span class="material-symbols-outlined text-[18px]">info</span>
+<p class="text-xs font-medium leading-tight">Deuda pendiente total: <span class="font-bold">$16.30</span></p>
+</div>
+</div>
+<div class="mb-4 flex items-center justify-between">
+<h3 class="text-lg font-bold">Selecciona el banco</h3>
+<span class="text-xs font-medium text-slate-400">Paso 1 de 2</span>
+</div>
+<div class="space-y-3">
+<label class="relative flex items-center p-4 bg-card-light dark:bg-card-dark border-2 border-slate-100 dark:border-slate-800 rounded-2xl cursor-pointer hover:border-primary/30 active:scale-[0.99] transition-all group">
+<input checked="" class="hidden peer" name="bank" type="radio"/>
+<div class="w-12 h-12 bg-slate-50 dark:bg-slate-800 rounded-xl flex items-center justify-center mr-4">
+<img alt="Banco Provincial Logo" class="w-8 h-8 rounded" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAvdDgwb3lRPAoXhCr04Mq2R-LvcSZTfQwTKUGALoRC7S0mGMcx0xZzaJ3R3MpZNpZstrW7w7Yoj6NgSIhfcYrIZo0_yJp7gdoN12Z1Chz2lEoHPHjYGvEg9SnkKI972Vtp7YfcFHebAazm2E1OuiQHU1BhQfUBbW8w8K9721zpEl_dA0KEMzEGmjEZFfOROdM2hkv-56ohzvqiNXyf5-eoMLIQ6kia5xCWIZ1rpG_v4q0cata5G2PiWI20XGKMTVOvJyJwiDT6UV4"/>
+</div>
+<div class="flex-1">
+<p class="font-bold text-slate-900 dark:text-white">Banco Provincial</p>
+<p class="text-xs text-slate-500">Cuenta Corriente • **4321</p>
+</div>
+<div class="w-6 h-6 rounded-full border-2 border-slate-200 dark:border-slate-700 peer-checked:border-primary peer-checked:bg-primary flex items-center justify-center transition-all">
+<div class="w-2 h-2 rounded-full bg-white opacity-0 peer-checked:opacity-100"></div>
+</div>
+</label>
+<label class="relative flex items-center p-4 bg-card-light dark:bg-card-dark border-2 border-slate-100 dark:border-slate-800 rounded-2xl cursor-pointer hover:border-primary/30 active:scale-[0.99] transition-all">
+<input class="hidden peer" name="bank" type="radio"/>
+<div class="w-12 h-12 bg-slate-50 dark:bg-slate-800 rounded-xl flex items-center justify-center mr-4">
+<img alt="Banesco Logo" class="w-8 h-8 rounded" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDj1JJSoGAoNKeLN8VHVH0a6KsWheSTK4ejjZOh1wtjUOdJdE3Y_8ryGckvbi_kcKpqWhuxGJtNpcvLd9LCY4wG6WDGI9wSrWXjEM5FVtEvyeq41U-CUcAUtUaB_d2mjOQvVcdQlvzmfP2XHENMK_5-v6cU7iuVpaW83uNbHCzQaX5rRn9-gPgsQdF-jbpZ2p-kV7U-ZtwG2BUr-iT-lcvtZiIYrAud7pf5TM_jPEqMKcsw2JGyKHtjC2ojXaPU8hrvGL-Ly2hoqpA"/>
+</div>
+<div class="flex-1">
+<p class="font-bold text-slate-900 dark:text-white">Banesco</p>
+<p class="text-xs text-slate-500">Cuenta Corriente • **9876</p>
+</div>
+<div class="w-6 h-6 rounded-full border-2 border-slate-200 dark:border-slate-700 peer-checked:border-primary peer-checked:bg-primary flex items-center justify-center transition-all">
+<div class="w-2 h-2 rounded-full bg-white opacity-0 peer-checked:opacity-100"></div>
+</div>
+</label>
+<label class="relative flex items-center p-4 bg-card-light dark:bg-card-dark border-2 border-slate-100 dark:border-slate-800 rounded-2xl cursor-pointer hover:border-primary/30 active:scale-[0.99] transition-all">
+<input class="hidden peer" name="bank" type="radio"/>
+<div class="w-12 h-12 bg-slate-50 dark:bg-slate-800 rounded-xl flex items-center justify-center mr-4">
+<span class="material-symbols-outlined text-primary text-2xl">account_balance_wallet</span>
+</div>
+<div class="flex-1">
+<p class="font-bold text-slate-900 dark:text-white">Zelle / Otros</p>
+<p class="text-xs text-slate-500">Pagos en divisas</p>
+</div>
+<div class="w-6 h-6 rounded-full border-2 border-slate-200 dark:border-slate-700 peer-checked:border-primary peer-checked:bg-primary flex items-center justify-center transition-all">
+<div class="w-2 h-2 rounded-full bg-white opacity-0 peer-checked:opacity-100"></div>
+</div>
+</label>
+</div>
+<div class="mt-8 bg-slate-100 dark:bg-slate-800/50 rounded-2xl p-4 flex gap-3">
+<span class="material-symbols-outlined text-slate-400 text-xl">verified_user</span>
+<p class="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                Tu información se guarda con trazabilidad y control. La administración validará tu reporte en un plazo de 24-48 horas hábiles.
+            </p>
+</div>
+</main>
+<div class="fixed bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-background-light dark:from-background-dark via-background-light/95 dark:via-background-dark/95 to-transparent">
+<button class="w-full bg-primary hover:bg-opacity-95 text-white font-bold py-4 rounded-2xl flex items-center justify-center gap-2 shadow-lg shadow-primary/25 transition-transform active:scale-[0.98]">
+            Siguiente
+            <span class="material-symbols-outlined text-xl">arrow_forward</span>
+</button>
+</div>
+<div class="fixed bottom-2 left-1/2 -translate-x-1/2 w-32 h-1.5 bg-slate-300 dark:bg-slate-700 rounded-full"></div>
+
+</body></html>

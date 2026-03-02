@@ -1,31 +1,46 @@
 <?php
 /**
- * Archivo de conexión exclusivo para la API móvil
- * Versión basada en la configuración del sistema de escritorio
+ * Archivo de conexion exclusivo para la API movil.
+ * Version basada en la configuracion del sistema de escritorio.
  */
+
+require_once(__DIR__ . "/env.php");
 
 class ConexionAPI {
     private static $instancia = null;
     private $conn;
 
-    // ⚙️ Configuración tomada de la versión escritorio
-    private $host = "localhost";
-    private $dbname = "rhodium_txcondominio";
-    private $user = "rhodium_roger";
-    private $pass = "Rp13953909*";
-    private $port = "5432";
+    private $host;
+    private $dbname;
+    private $user;
+    private $pass;
+    private $port;
 
     private function __construct() {
+        $this->host = env_value('DB_HOST', 'localhost');
+        $this->dbname = env_value('DB_NAME', '');
+        $this->user = env_value('DB_USER', '');
+        $this->pass = env_value('DB_PASS', '');
+        $this->port = env_value('DB_PORT', '5432');
+
+        if ($this->dbname === '' || $this->user === '') {
+            http_response_code(500);
+            echo json_encode([
+                "error" => "Configuracion de base de datos incompleta."
+            ]);
+            exit;
+        }
+
         try {
             $dsn = "pgsql:host={$this->host};port={$this->port};dbname={$this->dbname}";
             $this->conn = new PDO($dsn, $this->user, $this->pass);
             $this->conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
             $this->conn->exec("SET NAMES 'UTF8'");
         } catch (PDOException $e) {
+            error_log("DB connection error: " . $e->getMessage());
             http_response_code(500);
             echo json_encode([
-                "error" => "Error de conexión con la base de datos.",
-                "detalle" => $e->getMessage()
+                "error" => "Error de conexion con la base de datos."
             ]);
             exit;
         }

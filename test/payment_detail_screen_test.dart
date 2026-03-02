@@ -39,8 +39,8 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Desglose de la deuda'), findsOneWidget);
+    expect(find.text('Estado de cuenta'), findsOneWidget);
     expect(find.text('No hay deuda pendiente.'), findsOneWidget);
-    expect(find.text('No hay pagos reportados.'), findsOneWidget);
+    expect(find.text('Respaldo'), findsOneWidget);
   });
 }

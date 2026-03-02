@@ -7,13 +7,8 @@ import '../services/security_service.dart';
 import '../preferences_controller.dart';
 import 'login_screen.dart';
 import 'main_shell.dart';
+import '../theme/app_theme.dart';
 
-const _primary = Color(0xff548D88);
-const _secondaryBlue = Color(0xff2D4B6A);
-const _textMutedLight = Color(0xff64748B);
-const _textMutedDark = Color(0xff94A3B8);
-const _progressTrackLight = Color(0xffE2E8F0);
-const _progressTrackDark = Color(0xff1E293B);
 const _logoAsset = 'lib/assets/vecinus iso-01.png';
 
 class SplashScreen extends StatefulWidget {
@@ -87,8 +82,18 @@ class _SplashScreenState extends State<SplashScreen>
 
     if (!mounted) return;
 
-    if (token != null && userMap != null) {
+    if (token != null && token.trim().isNotEmpty && userMap != null) {
       final user = User.fromJson(userMap);
+      if (user.sessionExpiresAt != null &&
+          DateTime.now().isAfter(user.sessionExpiresAt!)) {
+        await AuthService.logout();
+        if (!mounted) return;
+        Navigator.pushReplacement(
+          context,
+          fadeSlideRoute(const LoginScreen()),
+        );
+        return;
+      }
 
       await preferencesController.loadForUser(user.id);
       if (!mounted) return;
@@ -133,9 +138,13 @@ class _SplashScreenState extends State<SplashScreen>
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
     final background = theme.scaffoldBackgroundColor;
-    final muted = isDark ? _textMutedDark : _textMutedLight;
-    final titleColor = isDark ? Colors.white : _secondaryBlue;
-    final progressTrack = isDark ? _progressTrackDark : _progressTrackLight;
+    final muted =
+        theme.textTheme.bodySmall?.color?.withValues(alpha: 0.7) ??
+            (isDark ? AppColors.darkTextMuted : AppColors.textMuted);
+    final titleColor =
+        isDark ? theme.colorScheme.onSurface : AppColors.brandTeal600;
+    final progressTrack =
+        isDark ? AppColors.darkSurfaceAlt : AppColors.surfaceAlt;
 
     return Scaffold(
       backgroundColor: background,
@@ -172,7 +181,7 @@ class _SplashScreenState extends State<SplashScreen>
                                 filterQuality: FilterQuality.high,
                                 errorBuilder: (context, error, stackTrace) {
                                   return Icon(
-                                    Icons.home_work_outlined,
+                                    IconsRounded.home_work,
                                     size: 72,
                                     color: titleColor,
                                   );
@@ -243,7 +252,7 @@ class _SplashScreenState extends State<SplashScreen>
                                 child: Stack(
                                   fit: StackFit.expand,
                                   children: [
-                                    Container(color: _primary),
+                                    Container(color: AppColors.brandBlue600),
                                     AnimatedBuilder(
                                       animation: _shimmerController,
                                       builder: (context, child) {
@@ -283,15 +292,16 @@ class _SplashScreenState extends State<SplashScreen>
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           Icon(
-                            Icons.verified_user_rounded,
+                            IconsRounded.verified_user,
                             size: 18,
-                            color: _primary.withValues(alpha: 0.6),
+                            color: AppColors.brandBlue600.withValues(alpha: 0.6),
                           ),
                           const SizedBox(width: 8),
                           Text(
                             'SMART GUARDIAN ACTIVE',
                             style: TextStyle(
-                              color: _primary.withValues(alpha: 0.6),
+                              color:
+                                  AppColors.brandBlue600.withValues(alpha: 0.6),
                               fontSize: 11,
                               fontWeight: FontWeight.w700,
                               letterSpacing: 0.8,

@@ -8,6 +8,8 @@ import '../models/inmueble.dart';
 import '../services/api_service.dart';
 import '../services/notification_service.dart';
 import '../theme/app_theme.dart';
+import '../ui_system/components/app_icon_button.dart';
+import '../ui_system/formatters/money.dart';
 
 typedef PreparePagoReporteLoader = Future<Map<String, dynamic>> Function({
   required String token,
@@ -50,7 +52,11 @@ class _ReportPaymentScreenState extends State<ReportPaymentScreen> {
   String? _evidenceBase64;
   String? _evidenceExt;
   String? _evidenceName;
+  int? _evidenceBytes;
   String? _formError;
+
+  static const int _maxEvidenceBytes = 2 * 1024 * 1024;
+  static const List<String> _allowedEvidenceExt = ['jpg', 'jpeg', 'png'];
 
   @override
   void initState() {
@@ -232,13 +238,36 @@ class _ReportPaymentScreenState extends State<ReportPaymentScreen> {
     );
     if (file == null) return;
     final bytes = await file.readAsBytes();
+    if (bytes.length > _maxEvidenceBytes) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('El archivo supera el limite de 2 MB.'),
+        ),
+      );
+      return;
+    }
     final encoded = base64Encode(bytes);
     final ext = file.path.split('.').last.toLowerCase();
+    if (!_allowedEvidenceExt.contains(ext)) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Formato no permitido. Usa JPG o PNG.'),
+        ),
+      );
+      return;
+    }
     setState(() {
       _evidenceBase64 = 'data:image/$ext;base64,$encoded';
       _evidenceExt = ext;
       _evidenceName = file.name;
+      _evidenceBytes = bytes.length;
     });
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Comprobante adjuntado')),
+    );
   }
 
   Future<void> _submit() async {
@@ -385,7 +414,6 @@ class _ReportPaymentScreenState extends State<ReportPaymentScreen> {
           onPayModeChange: _changePayMode,
           onAmountChanged: _onAmountChanged,
           onContinue: _goToSelectBank,
-          cuentaSeleccionada: _selectedAccountData,
         );
       case _ReportStep.selectBank:
         return _SelectBankStep(
@@ -425,6 +453,7 @@ class _ReportPaymentScreenState extends State<ReportPaymentScreen> {
           onBack: () => setState(() => _step = _ReportStep.bankDetails),
           onPickEvidence: _pickEvidence,
           evidenceLabel: _evidenceLabel,
+          evidenceHint: _evidenceHint,
           evidencePreview: _evidencePreview(),
           error: _formError,
         );
@@ -458,7 +487,7 @@ class _ReportPaymentScreenState extends State<ReportPaymentScreen> {
               borderRadius: BorderRadius.circular(10),
             ),
             child: const Icon(
-              Icons.payments_outlined,
+              IconsRounded.payments,
               color: AppColors.brandBlue600,
               size: 18,
             ),
@@ -469,7 +498,7 @@ class _ReportPaymentScreenState extends State<ReportPaymentScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Monto: \$${_formatMoney(_montoUsd)}',
+                  'Monto: ${formatMoney(_montoUsd)}',
                   style: theme.textTheme.bodyMedium?.copyWith(
                     fontWeight: FontWeight.w700,
                     fontFeatures: const [FontFeature.tabularFigures()],
@@ -495,9 +524,17 @@ class _ReportPaymentScreenState extends State<ReportPaymentScreen> {
   }
 
   String get _evidenceLabel {
-    if (_evidenceName != null) return 'Adjuntado: $_evidenceName';
+    if (_evidenceName != null) {
+      final size =
+          _evidenceBytes == null ? '' : ' (${_formatBytes(_evidenceBytes!)})';
+      return 'Adjuntado: $_evidenceName$size';
+    }
     if (_evidenceBase64 != null) return 'Comprobante adjuntado';
     return 'Adjuntar comprobante';
+  }
+
+  String get _evidenceHint {
+    return 'Formatos: JPG, PNG. Max 2 MB.';
   }
 
   Widget? _evidencePreview() {
@@ -521,20 +558,25 @@ class _ReportPaymentScreenState extends State<ReportPaymentScreen> {
     }
   }
 
-  String _formatMoney(double value) => value.toStringAsFixed(2);
+  String _formatBytes(int bytes) {
+    if (bytes < 1024) return '$bytes B';
+    final kb = bytes / 1024;
+    if (kb < 1024) return '${kb.toStringAsFixed(0)} KB';
+    final mb = kb / 1024;
+    return '${mb.toStringAsFixed(1)} MB';
+  }
+
 }
 
 class _StepHeader extends StatelessWidget {
   final String title;
   final String? subtitle;
   final int step;
-  final int total;
   final VoidCallback? onBack;
 
   const _StepHeader({
     required this.title,
     required this.step,
-    required this.total,
     this.subtitle,
     this.onBack,
   });
@@ -544,7 +586,10 @@ class _StepHeader extends StatelessWidget {
     final theme = Theme.of(context);
     final muted =
         theme.textTheme.bodySmall?.color?.withValues(alpha: 0.7) ?? AppColors.textMuted;
-    final progress = total > 0 ? step / total : 0.0;
+    const labels = ['MONTO', 'BANCO', 'RECIBO'];
+    const activeColor = AppColors.brandBlue600;
+    final inactiveColor = theme.colorScheme.surfaceContainerHighest;
+    final lineColor = theme.colorScheme.outline.withValues(alpha: 0.6);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -552,9 +597,12 @@ class _StepHeader extends StatelessWidget {
         Row(
           children: [
             if (onBack != null)
-              IconButton(
-                icon: const Icon(Icons.arrow_back),
+              AppIconButton(
+                icon: IconsRounded.arrow_back,
+                tooltip: 'Volver',
                 onPressed: onBack,
+                size: 44,
+                iconSize: 18,
               ),
             Expanded(
               child: Text(
@@ -570,30 +618,92 @@ class _StepHeader extends StatelessWidget {
           const SizedBox(height: 2),
           Text(subtitle!, style: theme.textTheme.bodySmall?.copyWith(color: muted)),
         ],
-        const SizedBox(height: 8),
+        const SizedBox(height: 12),
         Row(
           children: [
-            Text(
-              'Paso $step de $total',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: muted,
-                fontWeight: FontWeight.w600,
-              ),
+            _stepDot(
+              index: 0,
+              step: step,
+              activeColor: activeColor,
+              inactiveColor: inactiveColor,
+              lineColor: lineColor,
             ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(6),
-                child: LinearProgressIndicator(
-                  value: progress,
-                  minHeight: 6,
-                  backgroundColor: theme.colorScheme.surfaceContainerHighest,
-                ),
-              ),
+            Expanded(child: _stepLine(step > 1, activeColor, lineColor)),
+            _stepDot(
+              index: 1,
+              step: step,
+              activeColor: activeColor,
+              inactiveColor: inactiveColor,
+              lineColor: lineColor,
+            ),
+            Expanded(child: _stepLine(step > 2, activeColor, lineColor)),
+            _stepDot(
+              index: 2,
+              step: step,
+              activeColor: activeColor,
+              inactiveColor: inactiveColor,
+              lineColor: lineColor,
             ),
           ],
         ),
+        const SizedBox(height: 6),
+        Row(
+          children: [
+            for (final label in labels)
+              Expanded(
+                child: Text(
+                  label,
+                  textAlign: TextAlign.center,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 1.1,
+                    color: muted,
+                  ),
+                ),
+              ),
+          ],
+        ),
       ],
+    );
+  }
+
+  Widget _stepDot({
+    required int index,
+    required int step,
+    required Color activeColor,
+    required Color inactiveColor,
+    required Color lineColor,
+  }) {
+    final isActive = step >= index + 1;
+    return Container(
+      height: 28,
+      width: 28,
+      decoration: BoxDecoration(
+        color: isActive ? activeColor.withValues(alpha: 0.15) : inactiveColor,
+        shape: BoxShape.circle,
+        border: Border.all(
+          color: isActive ? activeColor : lineColor,
+        ),
+      ),
+      child: Center(
+        child: Text(
+          '${index + 1}',
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+            color: isActive ? activeColor : lineColor,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _stepLine(bool active, Color activeColor, Color lineColor) {
+    return Container(
+      height: 2,
+      margin: const EdgeInsets.symmetric(horizontal: 6),
+      color: active ? activeColor : lineColor,
     );
   }
 }
@@ -605,7 +715,6 @@ class _AmountStep extends StatelessWidget {
   final ValueChanged<bool> onPayModeChange;
   final VoidCallback onAmountChanged;
   final VoidCallback onContinue;
-  final Map<String, dynamic>? cuentaSeleccionada;
 
   const _AmountStep({
     required this.totalPendienteBase,
@@ -614,7 +723,6 @@ class _AmountStep extends StatelessWidget {
     required this.onPayModeChange,
     required this.onAmountChanged,
     required this.onContinue,
-    required this.cuentaSeleccionada,
   });
 
   @override
@@ -631,7 +739,6 @@ class _AmountStep extends StatelessWidget {
           title: 'Monto a reportar',
           subtitle: 'Indica si el pago es total o parcial.',
           step: 1,
-          total: 4,
         ),
         const SizedBox(height: 16),
         Container(
@@ -658,7 +765,7 @@ class _AmountStep extends StatelessWidget {
               ),
               const SizedBox(height: 6),
               Text(
-                '\$${totalPendienteBase.toStringAsFixed(2)}',
+                formatMoney(totalPendienteBase),
                 style: theme.textTheme.titleLarge?.copyWith(
                   fontWeight: FontWeight.w700,
                   fontFeatures: const [FontFeature.tabularFigures()],
@@ -722,7 +829,7 @@ class _AmountStep extends StatelessWidget {
             ),
             child: Row(
               children: [
-                const Icon(Icons.verified_rounded, color: AppColors.success),
+                const Icon(IconsRounded.verified, color: AppColors.success),
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(
@@ -737,19 +844,6 @@ class _AmountStep extends StatelessWidget {
             ),
           ),
         if (!hasDebt) const SizedBox(height: 12),
-        if (cuentaSeleccionada != null)
-          Row(
-            children: [
-              const Icon(Icons.account_balance_outlined, size: 18),
-              const SizedBox(width: 6),
-              Expanded(
-                child: Text(
-                  'Usaras ${cuentaSeleccionada?['banco'] ?? cuentaSeleccionada?['nombre'] ?? 'la cuenta seleccionada'}',
-                  style: TextStyle(fontSize: 13, color: muted),
-                ),
-              ),
-            ],
-          ),
         const SizedBox(height: 20),
         ElevatedButton(
           onPressed: hasDebt ? onContinue : null,
@@ -789,7 +883,6 @@ class _SelectBankStep extends StatelessWidget {
           title: 'Metodo de pago',
           subtitle: 'Elige el banco para reportar tu pago.',
           step: 2,
-          total: 4,
           onBack: onBack,
         ),
         const SizedBox(height: 12),
@@ -797,7 +890,7 @@ class _SelectBankStep extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Text(
-              'Monto en USD: \$${amountUsd.toStringAsFixed(2)}',
+              'Monto en USD: ${formatMoney(amountUsd)}',
               style: theme.textTheme.bodySmall?.copyWith(
                 color: muted,
                 fontFeatures: const [FontFeature.tabularFigures()],
@@ -828,7 +921,8 @@ class _SelectBankStep extends StatelessWidget {
             ),
             child: Column(
               children: [
-                Icon(Icons.account_balance_outlined, color: theme.colorScheme.primary),
+                Icon(IconsRounded.account_balance,
+                    color: theme.colorScheme.primary),
                 const SizedBox(height: 8),
                 Text(
                   'No hay bancos disponibles.',
@@ -886,7 +980,7 @@ class _SelectBankStep extends StatelessWidget {
                         borderRadius: BorderRadius.circular(10),
                       ),
                       child: const Icon(
-                        Icons.account_balance_outlined,
+                        IconsRounded.account_balance,
                         color: AppColors.brandBlue600,
                         size: 18,
                       ),
@@ -911,8 +1005,8 @@ class _SelectBankStep extends StatelessWidget {
                             const SizedBox(height: 4),
                             Text(
                               esVes
-                                  ? 'Pagaras: ${montoLocal.toStringAsFixed(2)} $moneda (tasa ${tasa.toStringAsFixed(2)} $moneda/USD)'
-                                  : 'Pagaras: \$${montoLocal.toStringAsFixed(2)}',
+                                  ? 'Pagaras: ${formatMoney(montoLocal, withSymbol: false)} $moneda (tasa ${formatMoney(tasa, withSymbol: false)} $moneda/USD)'
+                                  : 'Pagaras: ${formatMoney(montoLocal)}',
                               style: TextStyle(
                                 color: muted,
                                 fontFeatures: const [FontFeature.tabularFigures()],
@@ -922,7 +1016,7 @@ class _SelectBankStep extends StatelessWidget {
                         ],
                       ),
                     ),
-                    Icon(Icons.chevron_right, color: muted),
+                    Icon(IconsRounded.chevron_right, color: muted),
                   ],
                 ),
               ),
@@ -959,7 +1053,7 @@ class _BankDetailStep extends StatelessWidget {
   void _copy(BuildContext context, String value) {
     Clipboard.setData(ClipboardData(text: value));
     ScaffoldMessenger.of(context)
-        .showSnackBar(const SnackBar(content: Text('Copiado al portapapeles')));
+        .showSnackBar(const SnackBar(content: Text('Copiado')));
   }
 
   @override
@@ -1011,8 +1105,7 @@ class _BankDetailStep extends StatelessWidget {
         _StepHeader(
           title: 'Datos bancarios',
           subtitle: 'Usa estos datos para realizar el pago.',
-          step: 3,
-          total: 4,
+          step: 2,
           onBack: onBack,
         ),
         const SizedBox(height: 16),
@@ -1048,21 +1141,22 @@ class _BankDetailStep extends StatelessWidget {
               if (totalPendienteBase > 0)
                 _InfoRow(
                   label: 'Deuda total (USD)',
-                  value: '\$${totalPendienteBase.toStringAsFixed(2)}',
+                  value: formatMoney(totalPendienteBase),
                 ),
               _InfoRow(
                 label: 'Monto seleccionado (USD)',
-                value: '\$${montoUsd.toStringAsFixed(2)}',
+                value: formatMoney(montoUsd),
               ),
               _InfoRow(
                 label: 'A pagar en $monedaLabel',
-                value: '${montoLocal.toStringAsFixed(2)} $monedaLabel',
+                value:
+                    '${formatMoney(montoLocal, withSymbol: false)} $monedaLabel',
               ),
               if (cuentaEsVes)
                 _InfoRow(
                   label: 'Tasa aplicada',
                   value:
-                      '${tasaCuenta.toStringAsFixed(2)} $monedaLabel / USD',
+                      '${formatMoney(tasaCuenta, withSymbol: false)} $monedaLabel / USD',
                 ),
             ],
           ),
@@ -1092,6 +1186,7 @@ class _PaymentFormStep extends StatelessWidget {
   final VoidCallback onBack;
   final VoidCallback onPickEvidence;
   final String? evidenceLabel;
+  final String? evidenceHint;
   final Widget? evidencePreview;
   final String? error;
 
@@ -1110,6 +1205,7 @@ class _PaymentFormStep extends StatelessWidget {
     required this.onBack,
     required this.onPickEvidence,
     required this.evidenceLabel,
+    required this.evidenceHint,
     required this.evidencePreview,
     this.error,
   });
@@ -1118,6 +1214,9 @@ class _PaymentFormStep extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final fecha = fechaPago.toIso8601String().split('T').first;
+    final muted =
+        theme.textTheme.bodySmall?.color?.withValues(alpha: 0.7) ??
+            AppColors.textMuted;
 
     return ListView(
       padding: const EdgeInsets.all(20),
@@ -1125,8 +1224,7 @@ class _PaymentFormStep extends StatelessWidget {
         _StepHeader(
           title: 'Registrar pago',
           subtitle: 'Completa los datos del pago.',
-          step: 4,
-          total: 4,
+          step: 3,
           onBack: onBack,
         ),
         const SizedBox(height: 16),
@@ -1135,7 +1233,7 @@ class _PaymentFormStep extends StatelessWidget {
           keyboardType: TextInputType.number,
           decoration: const InputDecoration(
             labelText: 'Numero de referencia',
-            prefixIcon: Icon(Icons.pin),
+            prefixIcon: Icon(IconsRounded.pin),
           ),
         ),
         const SizedBox(height: 12),
@@ -1145,7 +1243,7 @@ class _PaymentFormStep extends StatelessWidget {
           child: InputDecorator(
             decoration: const InputDecoration(
               labelText: 'Fecha del pago',
-              suffixIcon: Icon(Icons.calendar_month),
+              suffixIcon: Icon(IconsRounded.calendar_month),
             ),
             child: Text(fecha),
           ),
@@ -1153,9 +1251,16 @@ class _PaymentFormStep extends StatelessWidget {
         const SizedBox(height: 12),
         OutlinedButton.icon(
           onPressed: onPickEvidence,
-          icon: const Icon(Icons.attach_file),
+          icon: const Icon(IconsRounded.attach_file),
           label: Text(evidenceLabel ?? 'Adjuntar comprobante'),
         ),
+        if (evidenceHint != null) ...[
+          const SizedBox(height: 6),
+          Text(
+            evidenceHint!,
+            style: TextStyle(fontSize: 12, color: muted),
+          ),
+        ],
         if (evidencePreview != null) evidencePreview!,
         const SizedBox(height: 12),
         TextField(
@@ -1202,7 +1307,7 @@ class _SuccessStep extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             const Icon(
-              Icons.check_circle_rounded,
+              IconsRounded.check_circle,
               size: 72,
               color: AppColors.success,
             ),
@@ -1276,9 +1381,12 @@ class _InfoRow extends StatelessWidget {
                 ),
                 if (onCopy != null) ...[
                   const SizedBox(width: 6),
-                  IconButton(
-                    icon: const Icon(Icons.copy, size: 18),
+                  AppIconButton(
+                    icon: IconsRounded.content_copy,
+                    tooltip: 'Copiar',
                     onPressed: onCopy,
+                    size: 44,
+                    iconSize: 18,
                   ),
                 ],
               ],

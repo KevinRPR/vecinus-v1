@@ -12,14 +12,9 @@ import '../services/auth_service.dart';
 import '../services/security_service.dart';
 import '../preferences_controller.dart';
 import '../theme_controller.dart';
+import '../theme/app_theme.dart';
 import 'login_screen.dart';
 
-const _primary = Color(0xff4F8B8B);
-const _cardLight = Color(0xffFFFFFF);
-const _cardDark = Color(0xff1E1E1E);
-const _borderLight = Color(0xffE2E8F0);
-const _textMutedLight = Color(0xff64748B);
-const _textMutedDark = Color(0xff94A3B8);
 
 class UserScreen extends StatefulWidget {
   final User user;
@@ -246,58 +241,23 @@ class _UserScreenState extends State<UserScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     final background = Theme.of(context).scaffoldBackgroundColor;
 
     final scaffold = Scaffold(
       backgroundColor: background,
       appBar: AppBar(
         title: const Text('Mi perfil'),
-        centerTitle: false,
         automaticallyImplyLeading: !widget.embedded,
         leading: widget.embedded
             ? null
             : IconButton(
-                icon: const Icon(Icons.arrow_back),
+                icon: const Icon(IconsRounded.arrow_back),
                 onPressed: () {
                   final user = _user ?? widget.user;
                   widget.onUserUpdated?.call(user);
                   Navigator.pop(context, user);
                 },
               ),
-        actions: [
-          ValueListenableBuilder<ThemeMode>(
-            valueListenable: themeController.themeMode,
-            builder: (context, mode, _) {
-              final isDarkMode = mode == ThemeMode.dark;
-              final buttonColor =
-                  isDark ? const Color(0xff1F2937) : const Color(0xffF1F5F9);
-              final iconColor =
-                  isDark ? const Color(0xffCBD5E1) : const Color(0xff475569);
-              return Padding(
-                padding: const EdgeInsets.only(right: 12),
-                child: Ink(
-                  decoration: BoxDecoration(
-                    color: buttonColor,
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(999),
-                    onTap: () => themeController.toggleDark(!isDarkMode),
-                    child: Padding(
-                      padding: const EdgeInsets.all(8),
-                      child: Icon(
-                        isDarkMode ? Icons.light_mode : Icons.dark_mode,
-                        color: iconColor,
-                        size: 20,
-                      ),
-                    ),
-                  ),
-                ),
-              );
-            },
-          ),
-        ],
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
@@ -366,7 +326,7 @@ class _UserScreenState extends State<UserScreen> {
           onTap: _openEditProfileSheet,
           child: Column(
             children: [
-              Container(height: 4, color: _primary),
+              Container(height: 4, color: AppColors.brandBlue600),
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 20, 20, 22),
                 child: Column(
@@ -411,10 +371,10 @@ class _UserScreenState extends State<UserScreen> {
   Widget _buildAvatar(User user, bool isDark) {
     final avatarUrl = user.avatarUrl;
     final fallback = Container(
-      color: _primary.withValues(alpha: 0.12),
+      color: AppColors.brandBlue600.withValues(alpha: 0.12),
       child: const Icon(
-        Icons.person,
-        color: _primary,
+        IconsRounded.person,
+        color: AppColors.brandBlue600,
         size: 36,
       ),
     );
@@ -428,7 +388,7 @@ class _UserScreenState extends State<UserScreen> {
           padding: const EdgeInsets.all(4),
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            border: Border.all(color: _primary.withValues(alpha: 0.2), width: 4),
+            border: Border.all(color: AppColors.brandBlue600.withValues(alpha: 0.2), width: 4),
           ),
           child: ClipOval(
             child: avatarUrl != null && avatarUrl.isNotEmpty
@@ -443,39 +403,59 @@ class _UserScreenState extends State<UserScreen> {
         Positioned(
           bottom: 0,
           right: 0,
-          child: GestureDetector(
-            onTap: _uploadingAvatar ? null : _pickAvatar,
-            child: Container(
-              padding: const EdgeInsets.all(6),
-              decoration: BoxDecoration(
-                color: _primary,
-                shape: BoxShape.circle,
-                border: Border.all(
-                  color: isDark ? _cardDark : Colors.white,
-                  width: 2,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.18),
-                    blurRadius: 8,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-              ),
-              child: _uploadingAvatar
-                  ? const SizedBox(
-                      height: 14,
-                      width: 14,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
+          child: Semantics(
+            button: true,
+            enabled: !_uploadingAvatar,
+            label: 'Cambiar foto de perfil',
+            child: Tooltip(
+              message: 'Cambiar foto de perfil',
+              child: Material(
+                color: Colors.transparent,
+                child: InkResponse(
+                  onTap: _uploadingAvatar ? null : _pickAvatar,
+                  radius: 24,
+                  child: SizedBox(
+                    width: 44,
+                    height: 44,
+                    child: Center(
+                      child: Container(
+                        padding: const EdgeInsets.all(6),
+                        decoration: BoxDecoration(
+                          color: AppColors.brandBlue600,
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: isDark
+                                ? AppColors.darkSurface
+                                : AppColors.surface,
+                            width: 2,
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.18),
+                              blurRadius: 8,
+                              offset: const Offset(0, 4),
+                            ),
+                          ],
+                        ),
+                        child: _uploadingAvatar
+                            ? const SizedBox(
+                                height: 14,
+                                width: 14,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Icon(
+                                IconsRounded.photo_camera,
+                                color: Colors.white,
+                                size: 16,
+                              ),
                       ),
-                    )
-                  : const Icon(
-                      Icons.photo_camera,
-                      color: Colors.white,
-                      size: 16,
                     ),
+                  ),
+                ),
+              ),
             ),
           ),
         ),
@@ -523,9 +503,9 @@ class _UserScreenState extends State<UserScreen> {
           child: Column(
             children: [
               _settingsTile(
-                icon: Icons.settings,
-                iconColor: const Color(0xff2563EB),
-                iconBackground: const Color(0xffDBEAFE),
+                icon: IconsRounded.settings,
+                iconColor: AppColors.brandBlue600,
+                iconBackground: AppColors.brandBlue600.withValues(alpha: 0.12),
                 title: 'Preferencias',
                 subtitle: 'Notificaciones, idioma...',
                 showDivider: true,
@@ -533,9 +513,9 @@ class _UserScreenState extends State<UserScreen> {
                 onTap: _openPreferencesSheet,
               ),
               _settingsTile(
-                icon: Icons.security,
-                iconColor: const Color(0xff7C3AED),
-                iconBackground: const Color(0xffEDE9FE),
+                icon: IconsRounded.security,
+                iconColor: AppColors.brandTeal600,
+                iconBackground: AppColors.brandTeal600.withValues(alpha: 0.12),
                 title: 'Seguridad',
                 subtitle: 'Cambiar contrasena, 2FA',
                 showDivider: true,
@@ -543,9 +523,9 @@ class _UserScreenState extends State<UserScreen> {
                 onTap: _openSecuritySheet,
               ),
               _settingsTile(
-                icon: Icons.logout,
-                iconColor: const Color(0xffEF4444),
-                iconBackground: const Color(0xffFEE2E2),
+                icon: IconsRounded.logout,
+                iconColor: AppColors.error,
+                iconBackground: AppColors.error.withValues(alpha: 0.12),
                 title: 'Cerrar sesion',
                 showChevron: false,
                 isDestructive: true,
@@ -620,7 +600,7 @@ class _UserScreenState extends State<UserScreen> {
                       ],
                     ),
                   ),
-                  if (showChevron) Icon(Icons.chevron_right, color: muted),
+                  if (showChevron) Icon(IconsRounded.chevron_right, color: muted),
                 ],
               ),
             ),
@@ -647,8 +627,8 @@ class _UserScreenState extends State<UserScreen> {
   Widget _buildSupportCard(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final muted = _mutedColor(isDark);
-    final background = _primary.withValues(alpha: isDark ? 0.12 : 0.1);
-    final borderColor = _primary.withValues(alpha: isDark ? 0.3 : 0.2);
+    final background = AppColors.brandBlue600.withValues(alpha: isDark ? 0.12 : 0.1);
+    final borderColor = AppColors.brandBlue600.withValues(alpha: isDark ? 0.3 : 0.2);
 
     return Container(
       padding: const EdgeInsets.all(20),
@@ -663,10 +643,10 @@ class _UserScreenState extends State<UserScreen> {
           Container(
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
-              color: _primary,
+              color: AppColors.brandBlue600,
               borderRadius: BorderRadius.circular(16),
             ),
-            child: const Icon(Icons.support_agent, color: Colors.white),
+            child: const Icon(IconsRounded.support_agent, color: Colors.white),
           ),
           const SizedBox(width: 14),
           Expanded(
@@ -696,7 +676,7 @@ class _UserScreenState extends State<UserScreen> {
                   child: ElevatedButton(
                     onPressed: _openSupportSheet,
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: _primary,
+                      backgroundColor: AppColors.brandBlue600,
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(vertical: 14),
                       shape: RoundedRectangleBorder(
@@ -782,7 +762,7 @@ class _UserScreenState extends State<UserScreen> {
                             if (saved) Navigator.of(sheetContext).pop();
                           },
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: _primary,
+                      backgroundColor: AppColors.brandBlue600,
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(vertical: 14),
                       shape: RoundedRectangleBorder(
@@ -885,7 +865,7 @@ class _UserScreenState extends State<UserScreen> {
                             max: 1.25,
                             divisions: 8,
                             label: '${(prefs.textScale * 100).round()}%',
-                            activeColor: _primary,
+                            activeColor: AppColors.brandBlue600,
                             onChanged: (value) {
                               preferencesController.updateWith(
                                 (current) => current.copyWith(textScale: value),
@@ -917,6 +897,46 @@ class _UserScreenState extends State<UserScreen> {
                             },
                           ),
                         ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    _sheetSectionTitle('Tema', muted),
+                    const SizedBox(height: 8),
+                    _sheetCard(
+                      cardColor: cardColor,
+                      borderColor: borderColor,
+                      child: ValueListenableBuilder<ThemeMode>(
+                        valueListenable: themeController.themeMode,
+                        builder: (context, mode, _) {
+                          return RadioGroup<ThemeMode>(
+                            groupValue: mode,
+                            onChanged: (value) {
+                              if (value == null) return;
+                              themeController.setThemeMode(value);
+                            },
+                            child: Column(
+                              children: [
+                                _buildThemeTile(
+                                  title: 'Sistema',
+                                  subtitle: 'Se ajusta al dispositivo.',
+                                  value: ThemeMode.system,
+                                ),
+                                const Divider(height: 1),
+                                _buildThemeTile(
+                                  title: 'Claro',
+                                  subtitle: 'Interfaz clara siempre.',
+                                  value: ThemeMode.light,
+                                ),
+                                const Divider(height: 1),
+                                _buildThemeTile(
+                                  title: 'Oscuro',
+                                  subtitle: 'Interfaz oscura siempre.',
+                                  value: ThemeMode.dark,
+                                ),
+                              ],
+                            ),
+                          );
+                        },
                       ),
                     ),
                     const SizedBox(height: 16),
@@ -1037,7 +1057,7 @@ class _UserScreenState extends State<UserScreen> {
                                 fontSize: 11,
                                 fontWeight: FontWeight.w600,
                                 color: prefs.quietHours.isActive(DateTime.now())
-                                    ? _primary
+                                    ? AppColors.brandBlue600
                                     : muted,
                               ),
                             ),
@@ -1195,7 +1215,7 @@ class _UserScreenState extends State<UserScreen> {
                               style: TextStyle(fontSize: 12, color: muted),
                             ),
                             trailing:
-                                Icon(Icons.chevron_right, color: muted),
+                                Icon(IconsRounded.chevron_right, color: muted),
                             onTap: () => _openContactChangeSheet(
                               title: 'Cambiar correo',
                               hint: 'nuevo@correo.com',
@@ -1213,7 +1233,7 @@ class _UserScreenState extends State<UserScreen> {
                               style: TextStyle(fontSize: 12, color: muted),
                             ),
                             trailing:
-                                Icon(Icons.chevron_right, color: muted),
+                                Icon(IconsRounded.chevron_right, color: muted),
                             onTap: () => _openContactChangeSheet(
                               title: 'Cambiar telefono',
                               hint: '+58 000 000 0000',
@@ -1402,7 +1422,7 @@ class _UserScreenState extends State<UserScreen> {
                                         }
                                       },
                               style: ElevatedButton.styleFrom(
-                                backgroundColor: _primary,
+                                backgroundColor: AppColors.brandBlue600,
                                 foregroundColor: Colors.white,
                                 padding:
                                     const EdgeInsets.symmetric(vertical: 14),
@@ -1580,7 +1600,7 @@ class _UserScreenState extends State<UserScreen> {
                         style: TextStyle(fontSize: 12, color: muted),
                       ),
                       value: enabled,
-                      activeThumbColor: _primary,
+                      activeThumbColor: AppColors.brandBlue600,
                       onChanged: (value) {
                         setModalState(() => enabled = value);
                       },
@@ -1593,7 +1613,7 @@ class _UserScreenState extends State<UserScreen> {
                         _formatMinutes(startMinutes),
                         style: TextStyle(fontSize: 12, color: muted),
                       ),
-                      trailing: const Icon(Icons.access_time),
+                      trailing: const Icon(IconsRounded.access_time),
                       onTap: () async {
                         await pickStart();
                         setModalState(() {});
@@ -1606,7 +1626,7 @@ class _UserScreenState extends State<UserScreen> {
                         _formatMinutes(endMinutes),
                         style: TextStyle(fontSize: 12, color: muted),
                       ),
-                      trailing: const Icon(Icons.access_time),
+                      trailing: const Icon(IconsRounded.access_time),
                       onTap: () async {
                         await pickEnd();
                         setModalState(() {});
@@ -1678,7 +1698,7 @@ class _UserScreenState extends State<UserScreen> {
       return ChoiceChip(
         label: Text(entry.value),
         selected: isSelected,
-        selectedColor: _primary.withValues(alpha: 0.2),
+        selectedColor: AppColors.brandBlue600.withValues(alpha: 0.2),
         onSelected: (value) {
           setModalState(() {
             if (value) {
@@ -1877,8 +1897,49 @@ class _UserScreenState extends State<UserScreen> {
       title: Text(title),
       subtitle: subtitle != null ? Text(subtitle) : null,
       value: value,
-      activeThumbColor: _primary,
+      activeThumbColor: AppColors.brandBlue600,
       onChanged: onChanged,
+    );
+  }
+
+  Widget _buildThemeTile({
+    required String title,
+    required String subtitle,
+    required ThemeMode value,
+  }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final muted = _mutedColor(isDark);
+    final registry = RadioGroup.maybeOf<ThemeMode>(context);
+
+    return InkWell(
+      onTap: registry == null ? null : () => registry.onChanged(value),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    style: TextStyle(fontSize: 12, color: muted),
+                  ),
+                ],
+              ),
+            ),
+            Radio<ThemeMode>(
+              value: value,
+              activeColor: AppColors.brandBlue600,
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -1889,7 +1950,7 @@ class _UserScreenState extends State<UserScreen> {
     final range =
         '${_formatMinutes(quietHours.startMinutes)} - ${_formatMinutes(quietHours.endMinutes)}';
     final days = _formatDays(quietHours.days);
-    return '$range • $days';
+    return '$range - $days';
   }
 
   String _quietHoursStatus(QuietHours quietHours) {
@@ -1959,13 +2020,14 @@ class _UserScreenState extends State<UserScreen> {
     );
   }
 
-  Color _cardColor(bool isDark) => isDark ? _cardDark : _cardLight;
+  Color _cardColor(bool isDark) =>
+      isDark ? AppColors.darkSurface : AppColors.surface;
 
   Color _borderColor(bool isDark) =>
-      isDark ? Colors.white.withValues(alpha: 0.08) : _borderLight;
+      isDark ? AppColors.darkBorder : AppColors.border;
 
   Color _mutedColor(bool isDark) =>
-      isDark ? _textMutedDark : _textMutedLight;
+      isDark ? AppColors.darkTextMuted : AppColors.textMuted;
 
   Widget _buildInputLabel(String text) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -1992,10 +2054,10 @@ class _UserScreenState extends State<UserScreen> {
       keyboardType: type,
       obscureText: obscure,
       style: TextStyle(color: theme.colorScheme.onSurface),
-      cursorColor: _primary,
+      cursorColor: AppColors.brandBlue600,
       decoration: InputDecoration(
         filled: true,
-        fillColor: isDark ? const Color(0xff262626) : const Color(0xffF1F5F9),
+        fillColor: isDark ? AppColors.darkSurfaceAlt : AppColors.surfaceAlt,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
           borderSide: BorderSide(color: borderColor),
@@ -2007,7 +2069,7 @@ class _UserScreenState extends State<UserScreen> {
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
           borderSide: const BorderSide(
-            color: _primary,
+            color: AppColors.brandBlue600,
             width: 1.4,
           ),
         ),

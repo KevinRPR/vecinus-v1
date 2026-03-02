@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html class="light" lang="es"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Dashboard Qué pasa hoy - Vecinus</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,typography"></script>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script>
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        primary: "#548C8C",
+                        "background-light": "#F8F9FA",
+                        "background-dark": "#121212",
+                        "card-light": "rgba(255, 255, 255, 0.8)",
+                        "card-dark": "rgba(30, 30, 30, 0.8)",
+                    },
+                    fontFamily: {
+                        display: ["Plus Jakarta Sans", "sans-serif"],
+                    },
+                    borderRadius: {
+                        DEFAULT: "16px",
+                    },
+                },
+            },
+        };
+        function toggleDarkMode() {
+            document.documentElement.classList.toggle('dark');
+        }
+    </script>
+<style type="text/tailwindcss">
+        @layer base {
+            body {
+                font-family: 'Plus Jakarta Sans', sans-serif;
+                -webkit-tap-highlight-color: transparent;
+            }
+        }
+        .glass {
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+        }
+        .ios-shadow {
+            box-shadow: 0 4px 24px -1px rgba(0, 0, 0, 0.06);
+        }
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+    </style>
+<style>
+        body {
+            min-height: max(884px, 100dvh);
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background-light dark:bg-background-dark text-slate-900 dark:text-slate-100 min-h-screen pb-24 transition-colors duration-300">
+<header class="sticky top-0 z-40 w-full glass bg-white/70 dark:bg-slate-900/70 border-b border-white/20 dark:border-slate-800/20 pt-14 pb-5 px-6">
+<div class="flex justify-between items-center">
+<div>
+<h1 class="text-3xl font-extrabold tracking-tight text-slate-900 dark:text-white">Inicio</h1>
+</div>
+<div class="flex items-center gap-3">
+<button class="w-10 h-10 flex items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800 transition-all active:scale-90" onclick="toggleDarkMode()">
+<span class="material-symbols-outlined text-slate-600 dark:text-yellow-400">dark_mode</span>
+</button>
+<div class="relative">
+<img alt="Profile" class="w-10 h-10 rounded-full border-2 border-white dark:border-slate-800 bg-slate-200 object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAydVG-fXzxGCaTXj1MdxLcCbtej0pWy-8uMoZJhJfBoFleigenOPOzQSAfY4Mz2pnUUSJZjgVnTQfSTXIJkTYfaOqc-d2TqiwUhyl9XlP1WtIab0ti_6PffIwfWW0MQmB5JglddEGfDmX7jR_IcUJvB_PAdfoeMdOgzjoRERC_cEGy0vYHKIHn6r-BJPEoplRLUmMkQG7GsoJjKwcS_fLuKOj7YKQeyYg5scHN0nkI6whaT5yUo7PUJ56ncEPPjhhxE31xY2v0WbE"/>
+<div class="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-white dark:border-slate-900 rounded-full"></div>
+</div>
+</div>
+</div>
+<div class="mt-1">
+<p class="text-[14px] text-slate-500 dark:text-slate-400 font-medium">
+            Hola, Roger Palencia <span class="mx-1 text-slate-300 dark:text-slate-600">•</span> Hoy 18:58
+        </p>
+</div>
+</header>
+<main class="px-6 mt-6 space-y-5">
+<section class="glass bg-white/70 dark:bg-slate-800/70 p-5 rounded-2xl ios-shadow border border-white/40 dark:border-slate-700/40">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-4">
+<div class="w-12 h-12 bg-teal-50 dark:bg-teal-900/30 rounded-full flex items-center justify-center">
+<span class="material-icons-round text-teal-600 dark:text-teal-400 text-3xl">check_circle</span>
+</div>
+<div>
+<h3 class="font-bold text-lg leading-tight">Estás al día</h3>
+<p class="text-sm text-slate-500 dark:text-slate-400">Sin deudas pendientes</p>
+</div>
+</div>
+<button class="bg-primary text-white text-sm font-semibold px-4 py-2 rounded-full shadow-lg shadow-primary/20 hover:opacity-90 active:scale-95 transition-all">
+                Ver pagos
+            </button>
+</div>
+</section>
+<section>
+<div class="flex items-center justify-between mb-3 px-1">
+<h2 class="font-bold text-slate-800 dark:text-slate-200">Alertas importantes</h2>
+<span class="text-xs font-semibold px-2 py-1 bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded-lg">1 Nueva</span>
+</div>
+<div class="glass bg-white/70 dark:bg-slate-800/70 p-4 rounded-2xl ios-shadow border border-white/40 dark:border-slate-700/40">
+<div class="flex gap-4">
+<div class="flex-shrink-0 w-10 h-10 bg-amber-50 dark:bg-amber-900/30 rounded-xl flex items-center justify-center">
+<span class="material-icons-round text-amber-500">campaign</span>
+</div>
+<div class="flex-1">
+<p class="text-sm font-semibold mb-0.5">Mantenimiento de ascensores</p>
+<p class="text-xs text-slate-500 dark:text-slate-400 line-clamp-1">Se realizará el lunes 15 de enero de 8:00 AM a...</p>
+</div>
+<a class="text-primary text-sm font-bold self-center" href="#">Ver</a>
+</div>
+</div>
+</section>
+<section class="relative overflow-hidden group">
+<div class="absolute inset-0 bg-gradient-to-r from-primary to-[#3E6B6B] opacity-10 rounded-2xl"></div>
+<div class="glass bg-white/40 dark:bg-slate-800/40 p-5 rounded-2xl ios-shadow border border-white/20 dark:border-slate-700/20 relative">
+<div class="flex items-center gap-4 mb-3">
+<div class="w-10 h-10 bg-primary/20 rounded-xl flex items-center justify-center">
+<span class="material-icons-round text-primary">how_to_vote</span>
+</div>
+<h3 class="font-bold">Tu opinión construye comunidad</h3>
+</div>
+<p class="text-sm text-slate-600 dark:text-slate-300 mb-4">Nueva votación disponible para el color de la fachada principal.</p>
+<button class="w-full bg-slate-900 dark:bg-white dark:text-slate-900 text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 group-hover:gap-3 transition-all">
+                Participar ahora
+                <span class="material-icons-round text-sm">arrow_forward</span>
+</button>
+</div>
+</section>
+<section>
+<div class="flex items-center justify-between mb-3 px-1">
+<h2 class="font-bold text-slate-800 dark:text-slate-200">Actividad reciente</h2>
+<button class="text-sm text-primary font-semibold">Ver todo</button>
+</div>
+<div class="space-y-3">
+<div class="flex gap-4 items-start relative pb-3">
+<div class="absolute left-5 top-10 bottom-0 w-0.5 bg-slate-200 dark:bg-slate-700"></div>
+<div class="flex-shrink-0 w-10 h-10 bg-blue-50 dark:bg-blue-900/30 rounded-full flex items-center justify-center z-10">
+<span class="material-icons-round text-blue-500 text-xl">receipt_long</span>
+</div>
+<div class="flex-1 pt-1">
+<div class="flex justify-between items-center mb-0.5">
+<p class="text-sm font-bold">Pago registrado</p>
+<span class="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Hoy</span>
+</div>
+<p class="text-xs text-slate-500 dark:text-slate-400">Recibo #9042 - $16.30</p>
+</div>
+</div>
+<div class="flex gap-4 items-start relative pb-3">
+<div class="absolute left-5 top-10 bottom-0 w-0.5 bg-slate-200 dark:bg-slate-700"></div>
+<div class="flex-shrink-0 w-10 h-10 bg-purple-50 dark:bg-purple-900/30 rounded-full flex items-center justify-center z-10">
+<span class="material-icons-round text-purple-500 text-xl">forum</span>
+</div>
+<div class="flex-1 pt-1">
+<div class="flex justify-between items-center mb-0.5">
+<p class="text-sm font-bold">Nuevo comentario</p>
+<span class="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Ayer</span>
+</div>
+<p class="text-xs text-slate-500 dark:text-slate-400">En el hilo: "Propuesta de seguridad"</p>
+</div>
+</div>
+<div class="flex gap-4 items-start">
+<div class="flex-shrink-0 w-10 h-10 bg-green-50 dark:bg-green-900/30 rounded-full flex items-center justify-center z-10">
+<span class="material-icons-round text-green-500 text-xl">verified_user</span>
+</div>
+<div class="flex-1 pt-1">
+<div class="flex justify-between items-center mb-0.5">
+<p class="text-sm font-bold">Respaldo completado</p>
+<span class="text-[10px] text-slate-400 uppercase font-bold tracking-wider">01 Ene</span>
+</div>
+<p class="text-xs text-slate-500 dark:text-slate-400">Información verificada con éxito</p>
+</div>
+</div>
+</div>
+</section>
+</main>
+<nav class="fixed bottom-0 left-0 right-0 glass bg-white/80 dark:bg-slate-900/80 border-t border-slate-200 dark:border-slate-800 px-6 py-3 z-50">
+<div class="max-w-md mx-auto flex justify-between items-center">
+<a class="flex flex-col items-center gap-1 group" href="#">
+<div class="p-2 rounded-2xl bg-primary text-white shadow-lg shadow-primary/30">
+<span class="material-icons-round">home</span>
+</div>
+<span class="text-[10px] font-bold text-primary">Inicio</span>
+</a>
+<a class="flex flex-col items-center gap-1 group" href="#">
+<div class="p-2 rounded-2xl text-slate-400 dark:text-slate-500 group-active:scale-95 transition-all">
+<span class="material-icons-round">account_balance_wallet</span>
+</div>
+<span class="text-[10px] font-bold text-slate-400 dark:text-slate-500">Pagos</span>
+</a>
+<a class="flex flex-col items-center gap-1 group" href="#">
+<div class="p-2 rounded-2xl text-slate-400 dark:text-slate-500 group-active:scale-95 transition-all relative">
+<span class="material-icons-round">notifications</span>
+<span class="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border-2 border-white dark:border-slate-900"></span>
+</div>
+<span class="text-[10px] font-bold text-slate-400 dark:text-slate-500">Alertas</span>
+</a>
+<a class="flex flex-col items-center gap-1 group" href="#">
+<div class="p-2 rounded-2xl text-slate-400 dark:text-slate-500 group-active:scale-95 transition-all">
+<span class="material-icons-round">person_outline</span>
+</div>
+<span class="text-[10px] font-bold text-slate-400 dark:text-slate-500">Perfil</span>
+</a>
+</div>
+</nav>
+
+</body></html>

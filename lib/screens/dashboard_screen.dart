@@ -8,14 +8,10 @@ import '../models/user.dart';
 import '../models/user_preferences.dart';
 import '../preferences_controller.dart';
 import '../services/notification_service.dart';
-
-const _primary = Color(0xff548C8C);
-const _cardLight = Color(0xCCFFFFFF);
-const _cardDark = Color(0xCC1E1E1E);
-const _textDark = Color(0xff0F172A);
-const _textMutedLight = Color(0xff64748B);
-const _textMutedDark = Color(0xff94A3B8);
-const double _glassBlur = 12;
+import '../theme/app_theme.dart';
+import '../ui_system/components/app_empty_state.dart';
+import '../ui_system/formatters/money.dart';
+import '../ui_system/formatters/safe_text.dart';
 
 class DashboardScreen extends StatelessWidget {
   final User user;
@@ -54,12 +50,13 @@ class DashboardScreen extends StatelessWidget {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
     final background = theme.scaffoldBackgroundColor;
-    final cardColor = isDark ? _cardDark : _cardLight;
-    final borderColor =
-        isDark ? Colors.white.withValues(alpha: 0.08) : Colors.white.withValues(alpha: 0.45);
+    final cardColor = theme.cardColor;
+    final borderColor = theme.colorScheme.outline;
     final shadowColor = Colors.black.withValues(alpha: isDark ? 0.35 : 0.06);
-    final textMuted = isDark ? _textMutedDark : _textMutedLight;
-    final textStrong = isDark ? Colors.white : _textDark;
+    final textMuted =
+        theme.textTheme.bodySmall?.color?.withValues(alpha: 0.7) ??
+            (isDark ? AppColors.darkTextMuted : AppColors.textMuted);
+    final textStrong = theme.colorScheme.onSurface;
 
     return ValueListenableBuilder<UserPreferences>(
       valueListenable: preferencesController.preferences,
@@ -78,9 +75,17 @@ class DashboardScreen extends StatelessWidget {
           textMuted: textMuted,
           textStrong: textStrong,
           isDark: isDark,
-          compactSummary: prefs.inmueble.compactSummary,
         );
         final announcementCard = _buildCommunityAnnouncementsSection(
+          context: context,
+          cardColor: cardColor,
+          borderColor: borderColor,
+          shadowColor: shadowColor,
+          textMuted: textMuted,
+          textStrong: textStrong,
+          isDark: isDark,
+        );
+        final activitySection = _buildRecentActivitySection(
           cardColor: cardColor,
           borderColor: borderColor,
           shadowColor: shadowColor,
@@ -90,8 +95,8 @@ class DashboardScreen extends StatelessWidget {
         );
         final cards = prefs.inmueble.cardOrder ==
                 DashboardCardOrder.announcementsFirst
-            ? [announcementCard, statusCard]
-            : [statusCard, announcementCard];
+            ? [announcementCard, statusCard, activitySection]
+            : [statusCard, announcementCard, activitySection];
 
         return Scaffold(
           backgroundColor: background,
@@ -109,7 +114,7 @@ class DashboardScreen extends StatelessWidget {
                     onRefresh: onRefresh,
                     child: ListView(
                       physics: const AlwaysScrollableScrollPhysics(),
-                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+                      padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
                       children: [
                         for (int i = 0; i < cards.length; i++) ...[
                           cards[i],
@@ -161,205 +166,86 @@ class DashboardScreen extends StatelessWidget {
     required Color textMuted,
     required Color textStrong,
     required bool isDark,
-    required bool compactSummary,
   }) {
     final totalDeuda = _totalDeuda;
     final isAlDia = totalDeuda <= 0;
     final inmuebleCount = inmuebles.length;
-    final paidCount =
-        inmuebles.where((item) => _parseMonto(item.deudaActual) <= 0).length;
-    final pendingCount = inmuebleCount - paidCount;
-    final breakdownItems = _debtBreakdownItems();
-    final shownBreakdown = breakdownItems.take(6).toList();
-    final remainingBreakdown = breakdownItems.length - shownBreakdown.length;
+    final pendingCount =
+        inmuebleCount - inmuebles.where((item) => _parseMonto(item.deudaActual) <= 0).length;
     final title = isAlDia ? 'Estas al dia' : 'Total adeudado';
     final subtitle = isAlDia
-        ? 'Sin deudas pendientes en tus inmuebles'
-        : '$pendingCount con deuda de $inmuebleCount inmuebles';
-    final statusColor =
-        isAlDia ? const Color(0xff0D9488) : const Color(0xffF59E0B);
-    final progress = inmuebleCount == 0
-        ? 0.0
-        : (paidCount / inmuebleCount).clamp(0.0, 1.0);
-    final progressLabel = '${(progress * 100).round()}%';
-    final dividerColor =
-        isDark ? Colors.white.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.06);
-    final analysisPaperBackground =
-        isDark ? const Color(0xff1B2730) : const Color(0xffF1F4F8);
-    final analysisPaperLineColor =
-        isDark ? const Color(0xff86B3B3) : _primary;
-    final analysisPaperBorder =
-        isDark ? Colors.white.withValues(alpha: 0.18) : _primary.withValues(alpha: 0.18);
-    final rowDividerColor =
-        isDark ? Colors.white.withValues(alpha: 0.35) : _primary.withValues(alpha: 0.45);
+        ? 'Sin deudas pendientes'
+        : '$pendingCount con deuda';
+    final statusColor = isAlDia ? AppColors.success : AppColors.warning;
+    final statusIcon =
+        isAlDia ? IconsRounded.check_circle : IconsRounded.warning_rounded;
 
     return _glassCard(
       color: cardColor,
       borderColor: borderColor,
       shadowColor: shadowColor,
-      padding: const EdgeInsets.all(22),
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final isCompact = constraints.maxWidth < 280;
-          final actionButton = _PrimaryPillButton(
+      padding: const EdgeInsets.all(18),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Container(
+            height: 52,
+            width: 52,
+            decoration: BoxDecoration(
+              color: statusColor.withValues(alpha: 0.12),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(statusIcon, color: statusColor),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    color: textStrong,
+                  ),
+                ),
+                if (!isAlDia) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    _formatCurrency(totalDeuda),
+                    style: TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.w700,
+                      color: textStrong,
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 4),
+                Text(
+                  subtitle,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: textMuted,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          _PrimaryPillButton(
             label: 'Ver pagos',
             onTap: onViewPayments,
-            dense: isCompact,
-          );
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                title,
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w700,
-                  color: textStrong,
-                ),
-              ),
-              const SizedBox(height: 12),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          _formatCurrency(totalDeuda),
-                          style: TextStyle(
-                            fontSize: 30,
-                            fontWeight: FontWeight.w700,
-                            color: textStrong,
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          subtitle,
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: textMuted,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  SizedBox(
-                    height: 64,
-                    width: 64,
-                    child: Stack(
-                      alignment: Alignment.center,
-                      children: [
-                        CircularProgressIndicator(
-                          value: progress,
-                          strokeWidth: 7,
-                          valueColor: AlwaysStoppedAnimation<Color>(
-                            statusColor.withValues(alpha: 0.85),
-                          ),
-                          backgroundColor:
-                              statusColor.withValues(alpha: 0.12),
-                        ),
-                        Text(
-                          progressLabel,
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                            color: textMuted,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                    child: _buildStatusMetric(
-                      label: 'Inmuebles',
-                      value: inmuebleCount.toString(),
-                      textMuted: textMuted,
-                      textStrong: textStrong,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: _buildStatusMetric(
-                      label: 'Con deuda',
-                      value: pendingCount.toString(),
-                      textMuted: textMuted,
-                      textStrong: textStrong,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Align(
-                alignment: Alignment.centerRight,
-                child: actionButton,
-              ),
-              if (!compactSummary && shownBreakdown.isNotEmpty) ...[
-                const SizedBox(height: 12),
-                Container(height: 1, color: dividerColor),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    'Desglose por inmueble',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 1.2,
-                      color: textMuted,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                _AnalysisPaper(
-                  backgroundColor: analysisPaperBackground,
-                  lineColor: analysisPaperLineColor,
-                  borderColor: analysisPaperBorder,
-                  child: Column(
-                    children: [
-                      for (int i = 0; i < shownBreakdown.length; i++) ...[
-                        Padding(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 8,
-                          ),
-                          child: _buildBreakdownRow(
-                            shownBreakdown[i],
-                            textStrong: textStrong,
-                            textMuted: textMuted,
-                          ),
-                        ),
-                        if (i != shownBreakdown.length - 1)
-                          Container(height: 1.2, color: rowDividerColor),
-                      ],
-                    ],
-                  ),
-                ),
-                if (remainingBreakdown > 0) ...[
-                  const SizedBox(height: 8),
-                  Text(
-                    'y $remainingBreakdown inmuebles mas',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: textMuted,
-                    ),
-                  ),
-                ],
-              ],
-            ],
-          );
-        },
+            dense: true,
+          ),
+        ],
       ),
     );
   }
 
   Widget _buildCommunityAnnouncementsSection({
+    required BuildContext context,
     required Color cardColor,
     required Color borderColor,
     required Color shadowColor,
@@ -367,344 +253,410 @@ class DashboardScreen extends StatelessWidget {
     required Color textStrong,
     required bool isDark,
   }) {
-    final highlight = _pickAnnouncementHighlight();
+    final totalAlerts = NotificationService.all().length;
+    final newLabel =
+        totalAlerts == 1 ? '1 Nueva' : '$totalAlerts Nuevas';
+    final highlights = _notificationHighlights();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Text(
+              'Alertas importantes',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+                color: textStrong,
+              ),
+            ),
+            if (totalAlerts > 0) ...[
+              const SizedBox(width: 8),
+              _alertBadge(newLabel),
+            ],
+            const Spacer(),
+            _ActionLink(
+              label: 'Ver',
+              onTap: onViewAlerts,
+              color: AppColors.brandBlue600,
+              fontSize: 12,
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        if (highlights.isEmpty)
+          const AppEmptyState(
+            icon: IconsRounded.notifications_off,
+            title: 'No hay alertas importantes.',
+            subtitle: 'Te avisaremos cuando exista una novedad.',
+          )
+        else
+          Column(
+            children: [
+              for (int i = 0; i < highlights.length; i++) ...[
+                _alertCard(
+                  highlights[i],
+                  cardColor: cardColor,
+                  borderColor: borderColor,
+                  shadowColor: shadowColor,
+                  textMuted: textMuted,
+                  textStrong: textStrong,
+                  onTap: onViewAlerts,
+                  isDark: isDark,
+                ),
+                if (i != highlights.length - 1)
+                  const SizedBox(height: 12),
+              ],
+            ],
+          ),
+        const SizedBox(height: 14),
+        _communityActionCard(
+          cardColor: cardColor,
+          borderColor: borderColor,
+          shadowColor: shadowColor,
+          textMuted: textMuted,
+          textStrong: textStrong,
+          isDark: isDark,
+          onParticipate: () {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Disponible pronto.')),
+            );
+          },
+        ),
+      ],
+    );
+  }
+
+  Widget _alertBadge(String label) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: AppColors.error.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        label,
+        style: const TextStyle(
+          fontSize: 10,
+          fontWeight: FontWeight.w700,
+          color: AppColors.error,
+        ),
+      ),
+    );
+  }
+
+  Widget _alertCard(
+    AppNotification notification, {
+    required Color cardColor,
+    required Color borderColor,
+    required Color shadowColor,
+    required Color textMuted,
+    required Color textStrong,
+    required VoidCallback onTap,
+    required bool isDark,
+  }) {
+    final iconColor = _kindColor(notification.kind);
+    final icon = _kindIcon(notification.kind);
+    final title = safeText(notification.title, fallback: 'Aviso');
+    final subtitle = safeTextOrEmpty(notification.subtitle);
 
     return _glassCard(
       color: cardColor,
       borderColor: borderColor,
       shadowColor: shadowColor,
       padding: const EdgeInsets.all(14),
-      child: Column(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildAnnouncementRow(
-            icon: highlight.icon,
-            iconColor: highlight.iconColor,
-            iconBackground: highlight.iconBackground,
-            title: highlight.title,
-            headline: highlight.headline,
-            subtitle: 'Inmueble: ${highlight.sourceLabel}',
-            actionLabel: highlight.actionLabel,
-            onTap: onViewAlerts,
-            textMuted: textMuted,
-            textStrong: textStrong,
-            isDark: isDark,
-            compact: true,
-            showSubtitle: true,
+          Container(
+            height: 36,
+            width: 36,
+            decoration: BoxDecoration(
+              color: iconColor.withValues(alpha: isDark ? 0.2 : 0.12),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(icon, color: iconColor, size: 18),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: textStrong,
+                  ),
+                ),
+                if (subtitle.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    subtitle,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 12, color: textMuted),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          _ActionLink(
+            label: 'Ver',
+            onTap: onTap,
+            color: AppColors.brandBlue600,
+            fontSize: 12,
           ),
         ],
       ),
     );
   }
 
-  Widget _buildAnnouncementRow({
-    required IconData icon,
-    required Color iconColor,
-    required Color iconBackground,
-    required String title,
-    required String headline,
-    required String subtitle,
-    required String actionLabel,
-    required VoidCallback onTap,
+  Widget _communityActionCard({
+    required Color cardColor,
+    required Color borderColor,
+    required Color shadowColor,
     required Color textMuted,
     required Color textStrong,
     required bool isDark,
-    bool compact = false,
-    bool showSubtitle = true,
+    required VoidCallback onParticipate,
   }) {
-    final iconSize = compact ? 34.0 : 40.0;
-    final iconRadius = compact ? 10.0 : 12.0;
-    final iconSymbolSize = compact ? 16.0 : 20.0;
-    final titleSize = compact ? 13.0 : 14.0;
-    final headlineSize = compact ? 13.0 : 14.0;
-    final subtitleSize = compact ? 12.0 : 13.0;
-    final spacing = compact ? 8.0 : 12.0;
-    final linkSize = compact ? 12.0 : 13.0;
+    return _glassCard(
+      color: cardColor,
+      borderColor: borderColor,
+      shadowColor: shadowColor,
+      padding: const EdgeInsets.all(14),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            height: 36,
+            width: 36,
+            decoration: BoxDecoration(
+              color: AppColors.brandBlue600.withValues(alpha: 0.12),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(
+              IconsRounded.campaign,
+              color: AppColors.brandBlue600,
+              size: 18,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Tu opinion construye comunidad',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: textStrong,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Nueva votacion disponible para el color de la fachada.',
+                  style: TextStyle(fontSize: 12, color: textMuted),
+                ),
+                const SizedBox(height: 10),
+                SizedBox(
+                  height: 36,
+                  child: ElevatedButton(
+                    onPressed: onParticipate,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: textStrong,
+                      foregroundColor: ThemeData.estimateBrightnessForColor(
+                                  textStrong) ==
+                              Brightness.dark
+                          ? Colors.white
+                          : Colors.black,
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      elevation: 0,
+                    ),
+                    child: const Text('Participar ahora  ->'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
-    return Row(
+  Widget _buildRecentActivitySection({
+    required Color cardColor,
+    required Color borderColor,
+    required Color shadowColor,
+    required Color textMuted,
+    required Color textStrong,
+    required bool isDark,
+  }) {
+    final recent = NotificationService.all().toList()
+      ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
+    final items = recent.take(3).toList();
+
+    return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Container(
-          height: iconSize,
-          width: iconSize,
-          decoration: BoxDecoration(
-            color: iconBackground.withValues(alpha: isDark ? 0.2 : 0.12),
-            borderRadius: BorderRadius.circular(iconRadius),
-          ),
-          child: Icon(icon, color: iconColor, size: iconSymbolSize),
+        Row(
+          children: [
+            Text(
+              'Actividad reciente',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+                color: textStrong,
+              ),
+            ),
+            const Spacer(),
+            _ActionLink(
+              label: 'Ver todo',
+              onTap: onViewAlerts,
+              color: AppColors.brandBlue600,
+              fontSize: 12,
+            ),
+          ],
         ),
-        SizedBox(width: spacing),
+        const SizedBox(height: 10),
+        _glassCard(
+          color: cardColor,
+          borderColor: borderColor,
+          shadowColor: shadowColor,
+          padding: const EdgeInsets.all(14),
+          child: items.isEmpty
+              ? Text(
+                  'No hay actividad reciente.',
+                  style: TextStyle(color: textMuted),
+                )
+              : Column(
+                  children: [
+                    for (int i = 0; i < items.length; i++) ...[
+                      _buildActivityRow(
+                        items[i],
+                        textMuted: textMuted,
+                        textStrong: textStrong,
+                      ),
+                      if (i != items.length - 1)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 10),
+                          child: Divider(
+                            height: 1,
+                            color: borderColor.withValues(alpha: 0.6),
+                          ),
+                        ),
+                    ],
+                  ],
+                ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildActivityRow(
+    AppNotification item, {
+    required Color textMuted,
+    required Color textStrong,
+  }) {
+    final iconColor = _kindColor(item.kind);
+    final icon = _kindIcon(item.kind);
+    final timeLabel = _activityTimeLabel(item.timestamp);
+
+    return Row(
+      children: [
+        Container(
+          height: 34,
+          width: 34,
+          decoration: BoxDecoration(
+            color: iconColor.withValues(alpha: 0.12),
+            shape: BoxShape.circle,
+          ),
+          child: Icon(icon, color: iconColor, size: 18),
+        ),
+        const SizedBox(width: 12),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      title,
-                      style: TextStyle(
-                        fontSize: titleSize,
-                        fontWeight: FontWeight.w700,
-                        color: textStrong,
-                      ),
-                    ),
-                  ),
-                  _ActionLink(
-                    label: actionLabel,
-                    onTap: onTap,
-                    color: _primary,
-                    fontSize: linkSize,
-                  ),
-                ],
-              ),
-              SizedBox(height: compact ? 4 : 6),
               Text(
-                headline,
+                item.title,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
-                  fontSize: headlineSize,
+                  fontSize: 13,
                   fontWeight: FontWeight.w600,
                   color: textStrong,
                 ),
               ),
-              if (showSubtitle) ...[
-                const SizedBox(height: 2),
-                Text(
-                  subtitle,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: subtitleSize, color: textMuted),
-                ),
-              ],
+              const SizedBox(height: 2),
+              Text(
+                item.subtitle,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: 12, color: textMuted),
+              ),
             ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildStatusMetric({
-    required String label,
-    required String value,
-    required Color textMuted,
-    required Color textStrong,
-  }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label.toUpperCase(),
-          style: TextStyle(
-            fontSize: 11,
-            fontWeight: FontWeight.w700,
-            letterSpacing: 1.2,
-            color: textMuted,
-          ),
-        ),
-        const SizedBox(height: 6),
-        Text(
-          value,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.w700,
-            color: textStrong,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _statusPill({required String label, required Color color}) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: color.withValues(alpha: 0.25)),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          fontSize: 11,
-          fontWeight: FontWeight.w700,
-          color: color,
-        ),
-      ),
-    );
-  }
-
-  Widget _buildBreakdownRow(
-    _DebtItem item, {
-    required Color textStrong,
-    required Color textMuted,
-  }) {
-    final amountColor = item.amount > 0 ? textStrong : textMuted;
-    return Row(
-      children: [
-        Expanded(
-          child: Text(
-            item.label,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-              color: textStrong,
-            ),
           ),
         ),
         const SizedBox(width: 8),
         Text(
-          _formatCurrency(item.amount),
+          timeLabel,
           style: TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.w700,
-            color: amountColor,
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+            color: textMuted,
           ),
         ),
       ],
     );
   }
 
-  List<AppNotification> _notificationsByKind(NotificationKind kind) {
-    final items = NotificationService.all()
-        .where((notification) => notification.kind == kind)
-        .toList();
-    items.sort((a, b) => b.timestamp.compareTo(a.timestamp));
-    return items;
+  List<AppNotification> _notificationHighlights() {
+    final items = NotificationService.all().toList()
+      ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
+    return items.take(2).toList();
   }
 
-  _AnnouncementHighlight _pickAnnouncementHighlight() {
-    final alerts = _notificationsByKind(NotificationKind.warning);
-    if (alerts.isNotEmpty) {
-      final notification = alerts.first;
-      return _AnnouncementHighlight(
-        icon: Icons.notifications,
-        iconColor: const Color(0xffF59E0B),
-        iconBackground: const Color(0xffF59E0B),
-        title: 'Alerta importante',
-        headline: _notificationHeadline(
-          notification,
-          fallback: 'Nueva alerta en tu comunidad',
-        ),
-        sourceLabel: _notificationSourceLabel(notification),
-        actionLabel: 'Ver',
-      );
+  Color _kindColor(NotificationKind kind) {
+    switch (kind) {
+      case NotificationKind.warning:
+        return AppColors.warning;
+      case NotificationKind.event:
+        return AppColors.info;
+      case NotificationKind.info:
+        return AppColors.success;
     }
-
-    final events = _notificationsByKind(NotificationKind.event);
-    if (events.isNotEmpty) {
-      final notification = events.first;
-      return _AnnouncementHighlight(
-        icon: Icons.event_available,
-        iconColor: const Color(0xff14B8A6),
-        iconBackground: const Color(0xff14B8A6),
-        title: 'Evento proximo',
-        headline: _notificationHeadline(
-          notification,
-          fallback: 'Evento · ${_formatDateTime(notification.timestamp)}',
-        ),
-        sourceLabel: _notificationSourceLabel(notification),
-        actionLabel: 'Ver calendario',
-      );
-    }
-
-    final notices = _notificationsByKind(NotificationKind.info);
-    if (notices.isNotEmpty) {
-      final notification = notices.first;
-      return _AnnouncementHighlight(
-        icon: Icons.campaign,
-        iconColor: const Color(0xff3B82F6),
-        iconBackground: const Color(0xff3B82F6),
-        title: 'Aviso destacado',
-        headline: _notificationHeadline(
-          notification,
-          fallback: 'Nuevo aviso del administrador',
-        ),
-        sourceLabel: _notificationSourceLabel(notification),
-        actionLabel: 'Ver avisos',
-      );
-    }
-
-    return _AnnouncementHighlight(
-      icon: Icons.campaign,
-      iconColor: const Color(0xff94A3B8),
-      iconBackground: const Color(0xff94A3B8),
-      title: 'Anuncio destacado',
-      headline: 'No hay anuncios recientes.',
-      sourceLabel: _notificationSourceLabel(null),
-      actionLabel: 'Ver avisos',
-    );
   }
 
-  String _notificationHeadline(
-    AppNotification notification, {
-    required String fallback,
-  }) {
-    final title = notification.title.trim();
-    if (title.isNotEmpty) return title;
-    final subtitle = notification.subtitle.trim();
-    if (subtitle.isNotEmpty) return subtitle;
-    return fallback;
+  IconData _kindIcon(NotificationKind kind) {
+    switch (kind) {
+      case NotificationKind.warning:
+        return IconsRounded.warning_rounded;
+      case NotificationKind.event:
+        return IconsRounded.event;
+      case NotificationKind.info:
+        return IconsRounded.notifications;
+    }
   }
 
-  String _notificationSourceLabel(AppNotification? notification) {
-    if (inmuebles.isEmpty) return 'Sin inmueble';
-    final labels = inmuebles.map(_inmuebleLabel).toList(growable: false);
-    if (notification != null) {
-      final haystack =
-          '${notification.title} ${notification.subtitle}'.toLowerCase();
-      for (final label in labels) {
-        final normalized = label.toLowerCase();
-        if (normalized.isNotEmpty && haystack.contains(normalized)) {
-          return label;
-        }
-      }
-    }
-    final breakdown = _debtBreakdownItems();
-    if (breakdown.isNotEmpty) return breakdown.first.label;
-    return labels.first;
+  String _activityTimeLabel(DateTime time) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final date = DateTime(time.year, time.month, time.day);
+    if (date == today) return 'HOY';
+    if (date == today.subtract(const Duration(days: 1))) return 'AYER';
+    return _formatShortDate(time);
   }
 
-  List<_DebtItem> _debtBreakdownItems() {
-    if (inmuebles.isEmpty) return <_DebtItem>[];
-    final items = inmuebles
-        .map(
-          (inmueble) => _DebtItem(
-            label: _inmuebleLabel(inmueble),
-            amount: _parseMonto(inmueble.deudaActual),
-          ),
-        )
-        .toList();
-    items.sort((a, b) => b.amount.compareTo(a.amount));
-    return items;
-  }
-
-  String _inmuebleLabel(Inmueble inmueble) {
-    final identificacion = inmueble.identificacion?.trim();
-    if (identificacion != null && identificacion.isNotEmpty) {
-      return identificacion;
-    }
-    final correlativo = inmueble.correlativo?.trim();
-    if (correlativo != null && correlativo.isNotEmpty) {
-      return 'Inmueble $correlativo';
-    }
-    final torre = inmueble.torre?.trim();
-    final piso = inmueble.piso?.trim();
-    if (torre != null && torre.isNotEmpty && piso != null && piso.isNotEmpty) {
-      return 'Torre $torre - Piso $piso';
-    }
-    final nombre = inmueble.nombreCondominio?.trim();
-    if (nombre != null && nombre.isNotEmpty) {
-      return nombre;
-    }
-    return 'Inmueble ${inmueble.idInmueble}';
-  }
-
-  String _formatDateTime(DateTime value) {
+  String _formatShortDate(DateTime value) {
     const months = [
       'Ene',
       'Feb',
@@ -719,10 +671,10 @@ class DashboardScreen extends StatelessWidget {
       'Nov',
       'Dic',
     ];
-    String two(int n) => n.toString().padLeft(2, '0');
-    final time = '${two(value.hour)}:${two(value.minute)}';
-    return '${two(value.day)} ${months[value.month - 1]} ${value.year} · $time';
+    final day = value.day.toString().padLeft(2, '0');
+    return '$day ${months[value.month - 1]}';
   }
+
 
   Widget _glassCard({
     required Widget child,
@@ -734,30 +686,27 @@ class DashboardScreen extends StatelessWidget {
   }) {
     return ClipRRect(
       borderRadius: BorderRadius.circular(radius),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: _glassBlur, sigmaY: _glassBlur),
-        child: Container(
-          padding: padding,
-          decoration: BoxDecoration(
-            color: color,
-            borderRadius: BorderRadius.circular(radius),
-            border: Border.all(color: borderColor),
-            boxShadow: [
-              BoxShadow(
-                color: shadowColor,
-                blurRadius: 24,
-                offset: const Offset(0, 10),
-              ),
-            ],
-          ),
-          child: child,
+      child: Container(
+        padding: padding,
+        decoration: BoxDecoration(
+          color: color,
+          borderRadius: BorderRadius.circular(radius),
+          border: Border.all(color: borderColor),
+          boxShadow: [
+            BoxShadow(
+              color: shadowColor,
+              blurRadius: 24,
+              offset: const Offset(0, 10),
+            ),
+          ],
         ),
+        child: child,
       ),
     );
   }
 
   String _formatCurrency(double value) {
-    return '\$${value.toStringAsFixed(2)}';
+    return formatMoney(value);
   }
 }
 
@@ -781,138 +730,113 @@ class _DashboardHeader extends StatelessWidget {
         isDark ? Colors.white.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.06);
     final backgroundColor =
         theme.scaffoldBackgroundColor.withValues(alpha: 0.92);
-    final dotBorderColor = theme.scaffoldBackgroundColor;
-    final textMuted = isDark ? _textMutedDark : _textMutedLight;
-    final textStrong = isDark ? Colors.white : _textDark;
+    final textMuted =
+        theme.textTheme.bodySmall?.color?.withValues(alpha: 0.7) ??
+            (isDark ? AppColors.darkTextMuted : AppColors.textMuted);
     final syncLabel =
         lastSync == null ? 'Sin actualizar' : _formatLastSync(lastSync!);
 
-    return SizedBox(
-      height: 118,
-      child: ClipRect(
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-          child: Container(
-            decoration: BoxDecoration(
-              color: backgroundColor,
-              border: Border(bottom: BorderSide(color: borderColor)),
-            ),
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      'Inicio',
+    final titleStyle = theme.appBarTheme.titleTextStyle ??
+        theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700);
+
+    return ClipRect(
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+        child: Container(
+          decoration: BoxDecoration(
+            color: backgroundColor,
+            border: Border(bottom: BorderSide(color: borderColor)),
+          ),
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text('Inicio', style: titleStyle),
+                  _buildAvatar(isDark),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Row(
+                children: [
+                  Flexible(
+                    child: Text(
+                      'Hola, ${user.displayName}',
                       style: TextStyle(
-                        fontSize: 32,
-                        fontWeight: FontWeight.w800,
-                        color: textStrong,
-                      ),
-                    ),
-                    Row(
-                      children: [
-                        _buildAvatar(isDark, dotBorderColor),
-                      ],
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 6),
-                Row(
-                  children: [
-                    Flexible(
-                      child: Text(
-                        'Hola, ${user.displayName}',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                          color: textMuted,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-                    Container(
-                      width: 4,
-                      height: 4,
-                      decoration: BoxDecoration(
-                        color: textMuted.withValues(alpha: 0.7),
-                        shape: BoxShape.circle,
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-                    Icon(Icons.history, size: 12, color: textMuted),
-                    const SizedBox(width: 4),
-                    Text(
-                      syncLabel,
-                      style: TextStyle(
-                        fontSize: 13,
+                        fontSize: 14,
                         fontWeight: FontWeight.w600,
                         color: textMuted,
                       ),
+                      overflow: TextOverflow.ellipsis,
                     ),
-                  ],
-                ),
-              ],
-            ),
+                  ),
+                  const SizedBox(width: 6),
+                  Container(
+                    width: 4,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: textMuted.withValues(alpha: 0.7),
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Icon(IconsRounded.history, size: 12, color: textMuted),
+                  const SizedBox(width: 4),
+                  Text(
+                    syncLabel,
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: textMuted,
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ),
         ),
       ),
     );
   }
 
-  Widget _buildAvatar(bool isDark, Color dotBorderColor) {
+  Widget _buildAvatar(bool isDark) {
     final avatarUrl = user.avatarUrl;
-    final borderColor = isDark ? const Color(0xff334155) : Colors.white;
-    return SizedBox(
-      height: 42,
-      width: 42,
-      child: Stack(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(2),
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              border: Border.all(color: borderColor, width: 2),
-            ),
-            child: ClipOval(
-              child: avatarUrl != null && avatarUrl.isNotEmpty
-                  ? Image.network(
-                      avatarUrl,
-                      fit: BoxFit.cover,
-                      errorBuilder: (context, error, stackTrace) {
-                        return _fallbackAvatar();
-                      },
-                    )
-                  : _fallbackAvatar(),
-            ),
+    final borderColor = isDark ? AppColors.darkBorder : AppColors.border;
+    return Semantics(
+      label: 'Perfil activo',
+      child: SizedBox(
+        height: 42,
+        width: 42,
+        child: Container(
+          padding: const EdgeInsets.all(2),
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            border: Border.all(color: borderColor, width: 2),
           ),
-          Positioned(
-            bottom: 0,
-            right: 0,
-            child: Container(
-              width: 12,
-              height: 12,
-              decoration: BoxDecoration(
-                color: const Color(0xff22C55E),
-                shape: BoxShape.circle,
-                border: Border.all(color: dotBorderColor, width: 2),
-              ),
-            ),
+          child: ClipOval(
+            child: avatarUrl != null && avatarUrl.isNotEmpty
+                ? Image.network(
+                    avatarUrl,
+                    fit: BoxFit.cover,
+                    errorBuilder: (context, error, stackTrace) {
+                      return _fallbackAvatar();
+                    },
+                  )
+                : _fallbackAvatar(),
           ),
-        ],
+        ),
       ),
     );
   }
 
   Widget _fallbackAvatar() {
     return Container(
-      color: _primary.withValues(alpha: 0.12),
+      color: AppColors.brandBlue600.withValues(alpha: 0.12),
       child: const Icon(
-        Icons.person,
-        color: _primary,
+        IconsRounded.person,
+        color: AppColors.brandBlue600,
         size: 22,
       ),
     );
@@ -942,11 +866,11 @@ class _PrimaryPillButton extends StatelessWidget {
       child: Container(
         padding: padding,
         decoration: BoxDecoration(
-          color: _primary,
+          color: AppColors.brandBlue600,
           borderRadius: BorderRadius.circular(999),
           boxShadow: [
             BoxShadow(
-              color: _primary.withValues(alpha: 0.25),
+              color: AppColors.brandBlue600.withValues(alpha: 0.25),
               blurRadius: 12,
               offset: const Offset(0, 6),
             ),
@@ -991,117 +915,6 @@ class _ActionLink extends StatelessWidget {
         ),
       ),
     );
-  }
-}
-
-class _DebtItem {
-  final String label;
-  final double amount;
-
-  _DebtItem({required this.label, required this.amount});
-}
-
-class _AnnouncementHighlight {
-  final IconData icon;
-  final Color iconColor;
-  final Color iconBackground;
-  final String title;
-  final String headline;
-  final String sourceLabel;
-  final String actionLabel;
-
-  const _AnnouncementHighlight({
-    required this.icon,
-    required this.iconColor,
-    required this.iconBackground,
-    required this.title,
-    required this.headline,
-    required this.sourceLabel,
-    required this.actionLabel,
-  });
-}
-
-class _AnalysisPaper extends StatelessWidget {
-  final Widget child;
-  final Color backgroundColor;
-  final Color lineColor;
-  final Color borderColor;
-
-  const _AnalysisPaper({
-    required this.child,
-    required this.backgroundColor,
-    required this.lineColor,
-    required this.borderColor,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(14),
-      child: CustomPaint(
-        painter: _AnalysisPaperPainter(
-          lineColor: lineColor,
-        ),
-        child: Container(
-          decoration: BoxDecoration(
-            color: backgroundColor,
-            border: Border.all(color: borderColor),
-            borderRadius: BorderRadius.circular(14),
-          ),
-          child: child,
-        ),
-      ),
-    );
-  }
-
-}
-
-class _AnalysisPaperPainter extends CustomPainter {
-  final Color lineColor;
-  final double gridSize;
-  final double minorWidth;
-  final double majorWidth;
-  final int majorInterval;
-
-  _AnalysisPaperPainter({
-    required this.lineColor,
-    this.gridSize = 12,
-    this.minorWidth = 0.6,
-    this.majorWidth = 1.0,
-    this.majorInterval = 5,
-  });
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final minorPaint = Paint()
-      ..color = lineColor.withValues(alpha: 0.3)
-      ..strokeWidth = minorWidth;
-    final majorPaint = Paint()
-      ..color = lineColor.withValues(alpha: 0.55)
-      ..strokeWidth = majorWidth;
-
-    int lineIndex = 0;
-    for (double x = 0; x <= size.width; x += gridSize) {
-      final paint = (lineIndex % majorInterval == 0) ? majorPaint : minorPaint;
-      canvas.drawLine(Offset(x, 0), Offset(x, size.height), paint);
-      lineIndex += 1;
-    }
-
-    lineIndex = 0;
-    for (double y = 0; y <= size.height; y += gridSize) {
-      final paint = (lineIndex % majorInterval == 0) ? majorPaint : minorPaint;
-      canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
-      lineIndex += 1;
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant _AnalysisPaperPainter oldDelegate) {
-    return oldDelegate.lineColor != lineColor ||
-        oldDelegate.gridSize != gridSize ||
-        oldDelegate.minorWidth != minorWidth ||
-        oldDelegate.majorWidth != majorWidth ||
-        oldDelegate.majorInterval != majorInterval;
   }
 }
 

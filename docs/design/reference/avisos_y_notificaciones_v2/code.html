@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html class="light" lang="es"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Alertas - Vecinus</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,typography,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet"/>
+<script>
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        primary: "#548C87",
+                        "background-light": "#F8F9FA",
+                        "background-dark": "#0F0F0F",
+                        "surface-light": "#FFFFFF",
+                        "surface-dark": "#1C1C1E",
+                    },
+                    fontFamily: {
+                        sans: ["Inter", "sans-serif"],
+                    },
+                    borderRadius: {
+                        DEFAULT: "14px",
+                    },
+                },
+            },
+        };
+    </script>
+<style type="text/tailwindcss">
+        body {
+            -webkit-tap-highlight-color: transparent;
+        }
+        .ios-header-blur {
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background-light dark:bg-background-dark text-slate-900 dark:text-slate-100 min-h-screen pb-24">
+<header class="sticky top-0 z-50 ios-header-blur bg-white/75 dark:bg-black/75 border-b border-slate-200/60 dark:border-slate-800/60">
+<div class="max-w-md mx-auto px-5 py-4 flex items-center justify-between">
+<h1 class="text-[32px] font-extrabold tracking-tight text-slate-900 dark:text-white">Alertas</h1>
+<div class="flex items-center gap-3">
+<button class="w-10 h-10 flex items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 active:scale-95 transition-transform" title="Marcar todo como leído">
+<span class="material-symbols-outlined text-[22px]">done_all</span>
+</button>
+<button class="w-10 h-10 flex items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 active:scale-95 transition-transform" onclick="document.documentElement.classList.toggle('dark')">
+<span class="material-symbols-outlined text-[22px] dark:hidden">dark_mode</span>
+<span class="material-symbols-outlined text-[22px] hidden dark:block text-amber-400">light_mode</span>
+</button>
+</div>
+</div>
+</header>
+<main class="max-w-md mx-auto px-5 mt-6">
+<div class="space-y-8" id="notifications-list">
+<section>
+<h2 class="text-[13px] font-bold uppercase tracking-[0.05em] text-slate-500 dark:text-slate-400 mb-4 ml-1">Hoy</h2>
+<div class="space-y-3">
+<div class="bg-surface-light dark:bg-surface-dark p-4 rounded-DEFAULT shadow-sm border border-slate-100 dark:border-slate-800/50 flex gap-4 active:bg-slate-50 dark:active:bg-white/5 transition-colors">
+<div class="w-12 h-12 rounded-full bg-red-100 dark:bg-red-500/20 flex items-center justify-center shrink-0">
+<span class="material-symbols-outlined text-red-600 dark:text-red-400">warning</span>
+</div>
+<div class="flex-1">
+<div class="flex justify-between items-start">
+<h3 class="font-bold text-[15px] text-slate-900 dark:text-slate-100">Corte de agua programado</h3>
+<span class="text-[11px] font-medium text-slate-400 mt-0.5">10:30 AM</span>
+</div>
+<p class="text-sm text-slate-600 dark:text-slate-400 mt-1 leading-relaxed">
+                                Mantenimiento en las tuberías principales. Se suspenderá el servicio de 2:00 PM a 5:00 PM.
+                            </p>
+</div>
+</div>
+<div class="bg-surface-light dark:bg-surface-dark p-4 rounded-DEFAULT shadow-sm border border-slate-100 dark:border-slate-800/50 flex gap-4 active:bg-slate-50 dark:active:bg-white/5 transition-colors">
+<div class="w-12 h-12 rounded-full bg-emerald-100 dark:bg-emerald-500/20 flex items-center justify-center shrink-0">
+<span class="material-symbols-outlined text-emerald-600 dark:text-emerald-400">check_circle</span>
+</div>
+<div class="flex-1">
+<div class="flex justify-between items-start">
+<h3 class="font-bold text-[15px] text-slate-900 dark:text-slate-100">Pago aprobado</h3>
+<span class="text-[11px] font-medium text-slate-400 mt-0.5">Hace 2h</span>
+</div>
+<p class="text-sm text-slate-600 dark:text-slate-400 mt-1 leading-relaxed">
+                                Tu reporte de pago #1 por $10.00 ha sido verificado satisfactoriamente.
+                            </p>
+</div>
+</div>
+</div>
+</section>
+<section>
+<h2 class="text-[13px] font-bold uppercase tracking-[0.05em] text-slate-500 dark:text-slate-400 mb-4 ml-1">Esta semana</h2>
+<div class="space-y-3">
+<div class="bg-surface-light/60 dark:bg-surface-dark/60 p-4 rounded-DEFAULT shadow-sm border border-slate-100 dark:border-slate-800/50 flex gap-4 opacity-90">
+<div class="w-12 h-12 rounded-full bg-blue-100 dark:bg-blue-500/20 flex items-center justify-center shrink-0">
+<span class="material-symbols-outlined text-blue-600 dark:text-blue-400">info</span>
+</div>
+<div class="flex-1">
+<div class="flex justify-between items-start">
+<h3 class="font-bold text-[15px] text-slate-900 dark:text-slate-100">Nueva normativa de basura</h3>
+<span class="text-[11px] font-medium text-slate-400 mt-0.5">Mar</span>
+</div>
+<p class="text-sm text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
+                                Se han actualizado los horarios de recolección para materiales reciclables.
+                            </p>
+</div>
+</div>
+<div class="bg-surface-light/60 dark:bg-surface-dark/60 p-4 rounded-DEFAULT shadow-sm border border-slate-100 dark:border-slate-800/50 flex gap-4 opacity-90">
+<div class="w-12 h-12 rounded-full bg-amber-100 dark:bg-amber-500/20 flex items-center justify-center shrink-0">
+<span class="material-symbols-outlined text-amber-600 dark:text-amber-400">campaign</span>
+</div>
+<div class="flex-1">
+<div class="flex justify-between items-start">
+<h3 class="font-bold text-[15px] text-slate-900 dark:text-slate-100">Asamblea ordinaria</h3>
+<span class="text-[11px] font-medium text-slate-400 mt-0.5">Lun</span>
+</div>
+<p class="text-sm text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
+                                Recordatorio de la reunión presencial el próximo sábado en el salón comunal.
+                            </p>
+</div>
+</div>
+</div>
+</section>
+</div>
+<div class="hidden py-16 px-8 flex flex-col items-center text-center" id="empty-state">
+<div class="w-48 h-48 bg-slate-100 dark:bg-slate-800/50 rounded-full flex items-center justify-center mb-8">
+<span class="material-symbols-outlined text-7xl text-slate-300 dark:text-slate-600">notifications_off</span>
+</div>
+<h3 class="text-xl font-bold mb-2">Aún no hay avisos</h3>
+<p class="text-slate-500 dark:text-slate-400 mb-8 max-w-[240px] text-sm leading-relaxed">Te avisaremos cuando haya novedades en tu comunidad.</p>
+<button class="bg-primary text-white font-semibold py-3.5 px-10 rounded-full shadow-lg shadow-primary/20 active:scale-95 transition-transform">
+                Revisar mi cuenta
+            </button>
+</div>
+</main>
+<nav class="fixed bottom-0 left-0 right-0 bg-white/90 dark:bg-black/90 ios-header-blur border-t border-slate-200/50 dark:border-slate-800/50 pb-8 pt-3">
+<div class="max-w-md mx-auto flex justify-around items-center">
+<a class="flex flex-col items-center gap-1 group" href="#">
+<span class="material-symbols-outlined text-slate-400 group-hover:text-primary transition-colors">home</span>
+<span class="text-[10px] font-medium text-slate-400 group-hover:text-primary">Inicio</span>
+</a>
+<a class="flex flex-col items-center gap-1 group" href="#">
+<span class="material-symbols-outlined text-slate-400 group-hover:text-primary transition-colors">account_balance_wallet</span>
+<span class="text-[10px] font-medium text-slate-400 group-hover:text-primary">Pagos</span>
+</a>
+<a class="flex flex-col items-center gap-1 group" href="#">
+<div class="relative">
+<span class="material-symbols-outlined text-primary" style="font-variation-settings: 'FILL' 1">notifications</span>
+<span class="absolute -top-0.5 -right-0.5 w-2 h-2 bg-red-500 rounded-full border-2 border-white dark:border-black"></span>
+</div>
+<span class="text-[10px] font-bold text-primary">Alertas</span>
+</a>
+<a class="flex flex-col items-center gap-1 group" href="#">
+<span class="material-symbols-outlined text-slate-400 group-hover:text-primary transition-colors">person</span>
+<span class="text-[10px] font-medium text-slate-400 group-hover:text-primary">Perfil</span>
+</a>
+</div>
+</nav>
+<script>
+        // For testing empty state in local browser
+        function toggleEmpty() {
+            document.getElementById('notifications-list').classList.toggle('hidden');
+            document.getElementById('empty-state').classList.toggle('hidden');
+        }
+    </script>
+
+</body></html>

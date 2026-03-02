@@ -6,21 +6,17 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/inmueble.dart';
 import '../models/user.dart';
+import '../services/auth_service.dart';
 import '../services/api_service.dart';
 import '../services/notification_service.dart';
 import '../preferences_controller.dart';
+import '../animations/transitions.dart';
+import '../theme/app_theme.dart';
 import 'dashboard_screen.dart';
 import 'notifications_screen.dart';
 import 'payments_screen.dart';
 import 'user_screen.dart';
-
-const _navPrimary = Color(0xff548C8C);
-const _navBackgroundLight = Color(0xCCFFFFFF);
-const _navBackgroundDark = Color(0xCC0F172A);
-const _navBorderLight = Color(0xffE2E8F0);
-const _navBorderDark = Color(0xff1F2937);
-const _navMutedLight = Color(0xff94A3B8);
-const _navMutedDark = Color(0xff64748B);
+import 'login_screen.dart';
 
 class MainShell extends StatefulWidget {
   final User user;
@@ -39,9 +35,11 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
   List<Inmueble> _inmuebles = [];
   bool _loadingData = true;
   bool _refreshing = false;
+  bool _handlingAuthError = false;
   DateTime? _lastFetch;
   static const double _floatingNavHeight = 72;
-  static const bool _useCache = false;
+  static const bool _useCache = true;
+  static const Duration _cacheTtl = Duration(minutes: 10);
   static const _cacheInmueblesKey = 'cache_inmuebles';
   static const _cacheFetchKey = 'cache_inmuebles_fetched_at';
 
@@ -52,7 +50,11 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
     _currentUser = widget.user;
     _pageController = PageController();
     if (_useCache) {
-      _restoreCachedInmuebles().then((_) => _loadInmuebles());
+      _restoreCachedInmuebles().then((shouldFetch) {
+        if (shouldFetch) {
+          _loadInmuebles();
+        }
+      });
     } else {
       _clearInmueblesCache();
       _loadInmuebles();
@@ -91,6 +93,11 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
       }
     } catch (e) {
       if (!mounted) return;
+      if (_isAuthError(e)) {
+        setState(() => _loadingData = false);
+        await _handleAuthError();
+        return;
+      }
       setState(() => _loadingData = false);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('No se pudieron cargar los inmuebles: $e')),
@@ -100,24 +107,35 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
     }
   }
 
-  Future<void> _restoreCachedInmuebles() async {
+  Future<bool> _restoreCachedInmuebles() async {
     final prefs = await SharedPreferences.getInstance();
     final rawList = prefs.getString(_cacheInmueblesKey);
-    if (rawList != null) {
-      try {
-        final List decoded = jsonDecode(rawList);
-        final inmuebles =
-            decoded.whereType<Map<String, dynamic>>().map(Inmueble.fromJson).toList();
-        final fetchedAt = DateTime.tryParse(prefs.getString(_cacheFetchKey) ?? '');
-        if (!mounted) return;
-        setState(() {
-          _inmuebles = inmuebles;
-          _lastFetch = fetchedAt;
-          _loadingData = false;
-        });
-      } catch (_) {
-        // ignore cache errors
-      }
+    if (rawList == null || rawList.isEmpty) {
+      return true;
+    }
+    final fetchedAt = DateTime.tryParse(prefs.getString(_cacheFetchKey) ?? '');
+    if (fetchedAt == null) {
+      await _clearInmueblesCache();
+      return true;
+    }
+    if (DateTime.now().difference(fetchedAt) > _cacheTtl) {
+      await _clearInmueblesCache();
+      return true;
+    }
+    try {
+      final List decoded = jsonDecode(rawList);
+      final inmuebles =
+          decoded.whereType<Map<String, dynamic>>().map(Inmueble.fromJson).toList();
+      if (!mounted) return false;
+      setState(() {
+        _inmuebles = inmuebles;
+        _lastFetch = fetchedAt;
+        _loadingData = false;
+      });
+      return false;
+    } catch (_) {
+      // ignore cache errors
+      return true;
     }
   }
 
@@ -125,6 +143,7 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_cacheInmueblesKey);
     await prefs.remove(_cacheFetchKey);
+    _lastFetch = null;
   }
 
   Future<void> _persistCache(List<Inmueble> items, DateTime fetchedAt) async {
@@ -135,7 +154,34 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
     await prefs.setString(_cacheFetchKey, fetchedAt.toIso8601String());
   }
 
+  bool _isCacheFresh() {
+    if (!_useCache) return false;
+    if (_lastFetch == null) return false;
+    return DateTime.now().difference(_lastFetch!) <= _cacheTtl;
+  }
+
+  bool _isAuthError(Object error) {
+    if (error is ApiAuthException) return true;
+    final message = error.toString().toLowerCase();
+    return message.contains('token') || message.contains('401');
+  }
+
+  Future<void> _handleAuthError() async {
+    if (_handlingAuthError) return;
+    _handlingAuthError = true;
+    await AuthService.logout();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Tu sesion expiro. Inicia sesion nuevamente.')),
+    );
+    Navigator.of(context).pushAndRemoveUntil(
+      fadeSlideRoute(const LoginScreen()),
+      (route) => false,
+    );
+  }
+
   void _maybeRefreshData() {
+    if (_isCacheFresh()) return;
     _loadInmuebles();
   }
 
@@ -205,20 +251,24 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
 
   Widget _buildBottomNavigation() {
     const items = [
-      _NavItem(icon: Icons.home_rounded, label: 'Inicio'),
-      _NavItem(icon: Icons.account_balance_wallet_outlined, label: 'Pagos'),
-      _NavItem(icon: Icons.notifications_none_rounded, label: 'Alertas'),
-      _NavItem(icon: Icons.person_outline, label: 'Perfil'),
+      _NavItem(icon: IconsRounded.home, label: 'Inicio'),
+      _NavItem(icon: IconsRounded.account_balance_wallet, label: 'Pagos'),
+      _NavItem(icon: IconsRounded.notifications, label: 'Alertas'),
+      _NavItem(icon: IconsRounded.person, label: 'Perfil'),
     ];
 
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
-    final muted = isDark ? _navMutedDark : _navMutedLight;
-    final background = isDark ? _navBackgroundDark : _navBackgroundLight;
-    final borderColor = isDark ? _navBorderDark : _navBorderLight;
+    const primary = AppColors.brandBlue600;
+    final muted = theme.colorScheme.onSurface.withValues(alpha: isDark ? 0.65 : 0.55);
+    final background =
+        theme.colorScheme.surface.withValues(alpha: isDark ? 0.94 : 0.96);
+    final borderColor = theme.colorScheme.outline.withValues(
+      alpha: isDark ? 0.6 : 0.7,
+    );
     final bottomInset = MediaQuery.of(context).viewPadding.bottom;
     final hasAlerts = NotificationService.all().isNotEmpty;
-    final dotBorderColor = isDark ? _navBorderDark : Colors.white;
+    final dotBorderColor = theme.colorScheme.surface;
 
     return ClipRect(
       child: BackdropFilter(
@@ -235,65 +285,73 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
               final selected = _currentIndex == index;
               final item = items[index];
               final iconColor = selected ? Colors.white : muted;
-              final labelColor = selected ? _navPrimary : muted;
+              final labelColor = selected ? primary : muted;
 
               return Expanded(
-                child: GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: () => _onTabSelected(index),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      AnimatedContainer(
-                        duration: const Duration(milliseconds: 200),
-                        padding: const EdgeInsets.all(8),
-                        decoration: selected
-                            ? BoxDecoration(
-                                color: _navPrimary,
-                                borderRadius: BorderRadius.circular(14),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: _navPrimary.withValues(alpha: 0.3),
-                                    blurRadius: 16,
-                                    offset: const Offset(0, 6),
-                                  ),
-                                ],
-                              )
-                            : null,
-                        child: Stack(
-                          clipBehavior: Clip.none,
-                          children: [
-                            Icon(item.icon, color: iconColor, size: 22),
-                            if (index == 2 && hasAlerts)
-                              Positioned(
-                                top: -2,
-                                right: -2,
-                                child: Container(
-                                  width: 8,
-                                  height: 8,
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xffEF4444),
-                                    shape: BoxShape.circle,
-                                    border: Border.all(
-                                      color: dotBorderColor,
-                                      width: 1.5,
+                child: Semantics(
+                  label: item.label,
+                  button: true,
+                  selected: selected,
+                  child: Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(16),
+                      onTap: () => _onTabSelected(index),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          AnimatedContainer(
+                            duration: const Duration(milliseconds: 200),
+                            padding: const EdgeInsets.all(8),
+                            decoration: selected
+                                ? BoxDecoration(
+                                    color: primary,
+                                    borderRadius: BorderRadius.circular(14),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: primary.withValues(alpha: 0.3),
+                                        blurRadius: 16,
+                                        offset: const Offset(0, 6),
+                                      ),
+                                    ],
+                                  )
+                                : null,
+                            child: Stack(
+                              clipBehavior: Clip.none,
+                              children: [
+                                Icon(item.icon, color: iconColor, size: 22),
+                                if (index == 2 && hasAlerts)
+                                  Positioned(
+                                    top: -2,
+                                    right: -2,
+                                    child: Container(
+                                      width: 8,
+                                      height: 8,
+                                      decoration: BoxDecoration(
+                                        color: AppColors.error,
+                                        shape: BoxShape.circle,
+                                        border: Border.all(
+                                          color: dotBorderColor,
+                                          width: 1.5,
+                                        ),
+                                      ),
                                     ),
                                   ),
-                                ),
-                              ),
-                          ],
-                        ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            item.label,
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                              color: labelColor,
+                            ),
+                          ),
+                        ],
                       ),
-                      const SizedBox(height: 4),
-                      Text(
-                        item.label,
-                        style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w700,
-                          color: labelColor,
-                        ),
-                      ),
-                    ],
+                    ),
                   ),
                 ),
               );

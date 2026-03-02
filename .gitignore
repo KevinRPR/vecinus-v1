@@ -22,3 +22,8 @@ Thumbs.db
 
 # Flutter specific
 pubspec.lock
+
+# Local env files (do not commit secrets)
+.env
+.env.local
+/php/config/env.local.php

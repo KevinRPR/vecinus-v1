@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 
 import '../animations/transitions.dart';
 import '../services/notification_service.dart';
+import '../theme/app_theme.dart';
+import '../ui_system/components/app_empty_state.dart';
+import '../ui_system/components/app_icon_button.dart';
 
 class NotificationsScreen extends StatefulWidget {
   final String token;
@@ -25,21 +28,24 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
-    final cardColor = isDark ? theme.cardColor : const Color(0xfff0f1f6);
+    final cardColor = theme.cardColor;
     final shadowColor = Colors.black.withValues(alpha: isDark ? 0.25 : 0.06);
-    final textMuted = isDark ? Colors.grey.shade400 : Colors.grey.shade600;
+    final textMuted =
+        theme.textTheme.bodySmall?.color?.withValues(alpha: 0.7) ??
+            (isDark ? AppColors.darkTextMuted : AppColors.textMuted);
+    final sections = _buildSections(_items);
 
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(
         title: const Text('Alertas'),
-        centerTitle: true,
         actions: [
-          IconButton(
-            tooltip: 'Agregar prueba',
-            icon: const Icon(Icons.add_alert),
-            onPressed: _addTestNotification,
+          AppIconButton(
+            icon: IconsRounded.done_all,
+            tooltip: 'Marcar todo',
+            onPressed: _items.isEmpty ? null : _clearAllNotifications,
           ),
+          const SizedBox(width: 12),
         ],
       ),
       body: RefreshIndicator(
@@ -49,26 +55,36 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
           beginOffset: const Offset(0, 0.02),
           child: ListView(
             physics: const AlwaysScrollableScrollPhysics(),
-            padding: const EdgeInsets.all(20),
+            padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
             children: [
               if (_items.isEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(top: 24),
-                  child: Text(
-                    'No tienes alertas.',
-                    style: TextStyle(color: textMuted),
-                  ),
+                const AppEmptyState(
+                  icon: IconsRounded.notifications_off,
+                  title: 'No tienes alertas.',
+                  subtitle: 'Te avisaremos cuando exista una novedad.',
                 )
               else
-                for (int i = 0; i < _items.length; i++) ...[
-                  _notificationTile(
-                    _items[i],
-                    cardColor,
-                    shadowColor,
-                    textMuted,
-                  ),
-                  if (i != _items.length - 1) const SizedBox(height: 12),
-                ]
+                ...sections.expand((section) {
+                  final widgets = <Widget>[
+                    _sectionHeader(section.label, textMuted),
+                    const SizedBox(height: 10),
+                  ];
+                  widgets.addAll(
+                    section.items.map((item) {
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: _notificationTile(
+                          item,
+                          cardColor,
+                          shadowColor,
+                          textMuted,
+                          section.timestampLabel(item.timestamp),
+                        ),
+                      );
+                    }),
+                  );
+                  return widgets;
+                }),
             ],
           ),
         ),
@@ -81,6 +97,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     Color cardColor,
     Color shadowColor,
     Color textMuted,
+    String timeLabel,
   ) {
     final color = _kindColor(item.kind);
     final icon = _kindIcon(item.kind);
@@ -90,12 +107,12 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       direction: DismissDirection.endToStart,
       background: Container(
         decoration: BoxDecoration(
-          color: Colors.red.shade400,
+          color: AppColors.error.withValues(alpha: 0.85),
           borderRadius: BorderRadius.circular(18),
         ),
         alignment: Alignment.centerRight,
         padding: const EdgeInsets.symmetric(horizontal: 20),
-        child: const Icon(Icons.delete, color: Colors.white),
+        child: const Icon(IconsRounded.delete, color: Colors.white),
       ),
       onDismissed: (_) {
         NotificationService.remove(item.id).then((_) {
@@ -128,7 +145,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                     width: 44,
                     decoration: BoxDecoration(
                       color: color.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(14),
+                      shape: BoxShape.circle,
                     ),
                     child: Icon(icon, color: color),
                   ),
@@ -137,22 +154,33 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          item.title,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w600,
-                            fontSize: 15,
-                          ),
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              child: Text(
+                                item.title,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 15,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              timeLabel,
+                              style: TextStyle(
+                                color: textMuted,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
                         ),
                         const SizedBox(height: 4),
                         Text(
                           item.subtitle,
                           style: TextStyle(color: textMuted),
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          _formatTimeAgo(item.timestamp),
-                          style: TextStyle(color: textMuted, fontSize: 12),
                         ),
                       ],
                     ),
@@ -166,12 +194,73 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     );
   }
 
-  Future<void> _addTestNotification() async {
-    await NotificationService.add(
-      title: 'Notificacion de prueba',
-      subtitle: 'Esta es una alerta de ejemplo para validar la vista.',
-      kind: NotificationKind.info,
+  List<_NotificationSection> _buildSections(List<AppNotification> items) {
+    final sorted = [...items]
+      ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
+    final now = DateTime.now();
+    final todayStart = DateTime(now.year, now.month, now.day);
+    final weekStart = todayStart.subtract(const Duration(days: 7));
+
+    final todayItems = <AppNotification>[];
+    final weekItems = <AppNotification>[];
+    final olderItems = <AppNotification>[];
+
+    for (final item in sorted) {
+      final ts = item.timestamp;
+      if (!ts.isBefore(todayStart)) {
+        todayItems.add(item);
+      } else if (!ts.isBefore(weekStart)) {
+        weekItems.add(item);
+      } else {
+        olderItems.add(item);
+      }
+    }
+
+    final sections = <_NotificationSection>[];
+    if (todayItems.isNotEmpty) {
+      sections.add(
+        _NotificationSection(
+          label: 'HOY',
+          items: todayItems,
+          timestampLabel: _formatTime,
+        ),
+      );
+    }
+    if (weekItems.isNotEmpty) {
+      sections.add(
+        _NotificationSection(
+          label: 'ESTA SEMANA',
+          items: weekItems,
+          timestampLabel: _formatWeekday,
+        ),
+      );
+    }
+    if (olderItems.isNotEmpty) {
+      sections.add(
+        _NotificationSection(
+          label: 'ANTERIORES',
+          items: olderItems,
+          timestampLabel: _formatShortDate,
+        ),
+      );
+    }
+    return sections;
+  }
+
+  Widget _sectionHeader(String label, Color muted) {
+    return Text(
+      label,
+      style: TextStyle(
+        fontSize: 12,
+        fontWeight: FontWeight.w700,
+        letterSpacing: 1.4,
+        color: muted,
+      ),
     );
+  }
+
+  Future<void> _clearAllNotifications() async {
+    await NotificationService.clear();
     if (!mounted) return;
     setState(() => _items = NotificationService.all());
   }
@@ -211,14 +300,14 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                   ),
                 ),
                 const SizedBox(height: 12),
-                Row(
+                  Row(
                   children: [
                     Container(
                       height: 48,
                       width: 48,
                       decoration: BoxDecoration(
                         color: color.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(16),
+                        shape: BoxShape.circle,
                       ),
                       child: Icon(icon, color: color),
                     ),
@@ -269,7 +358,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                           if (!sheetContext.mounted) return;
                           Navigator.of(sheetContext).pop();
                         },
-                        icon: const Icon(Icons.delete_outline),
+                        icon: const Icon(IconsRounded.delete_outline),
                         label: const Text('Eliminar'),
                         style: OutlinedButton.styleFrom(
                           foregroundColor: Colors.red.shade400,
@@ -340,17 +429,17 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
   Color _kindColor(NotificationKind kind) {
     return switch (kind) {
-      NotificationKind.event => const Color(0xff2563eb),
-      NotificationKind.warning => const Color(0xfff97316),
-      NotificationKind.info => const Color(0xff10b981),
+      NotificationKind.event => AppColors.info,
+      NotificationKind.warning => AppColors.warning,
+      NotificationKind.info => AppColors.success,
     };
   }
 
   IconData _kindIcon(NotificationKind kind) {
     return switch (kind) {
-      NotificationKind.event => Icons.event,
-      NotificationKind.warning => Icons.warning_amber_rounded,
-      NotificationKind.info => Icons.notifications_active_outlined,
+      NotificationKind.event => IconsRounded.event,
+      NotificationKind.warning => IconsRounded.warning_rounded,
+      NotificationKind.info => IconsRounded.notifications,
     };
   }
 
@@ -362,15 +451,43 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     };
   }
 
-  String _formatTimeAgo(DateTime time) {
-    final diff = DateTime.now().difference(time);
-    if (diff.inMinutes < 60) return 'Hace ${diff.inMinutes} min';
-    if (diff.inHours < 24) return 'Hace ${diff.inHours} h';
-    return 'Hace ${diff.inDays} d';
+  String _formatTime(DateTime time) {
+    String two(int n) => n.toString().padLeft(2, '0');
+    return '${two(time.hour)}:${two(time.minute)}';
+  }
+
+  String _formatWeekday(DateTime time) {
+    const labels = [
+      'Lun',
+      'Mar',
+      'Mie',
+      'Jue',
+      'Vie',
+      'Sab',
+      'Dom',
+    ];
+    return labels[time.weekday - 1];
+  }
+
+  String _formatShortDate(DateTime time) {
+    String two(int n) => n.toString().padLeft(2, '0');
+    return '${two(time.day)}/${two(time.month)}';
   }
 
   String _formatFullDate(DateTime time) {
     String two(int n) => n.toString().padLeft(2, '0');
     return '${two(time.day)}/${two(time.month)}/${time.year} ${two(time.hour)}:${two(time.minute)}';
   }
+}
+
+class _NotificationSection {
+  final String label;
+  final List<AppNotification> items;
+  final String Function(DateTime) timestampLabel;
+
+  const _NotificationSection({
+    required this.label,
+    required this.items,
+    required this.timestampLabel,
+  });
 }

@@ -1,3 +1,4 @@
+// ignore_for_file: constant_identifier_names
 import 'package:flutter/material.dart';
 
 class AppColors {
@@ -90,12 +91,13 @@ class AppTheme {
         backgroundColor: surface,
         foregroundColor: textStrong,
         elevation: 0,
-        centerTitle: true,
+        centerTitle: false,
+        titleSpacing: 20,
         surfaceTintColor: Colors.transparent,
         titleTextStyle: TextStyle(
           fontFamily: fontFamily,
           fontSize: 20,
-          fontWeight: FontWeight.w600,
+          fontWeight: FontWeight.w700,
           color: textStrong,
         ),
       ),
@@ -227,4 +229,53 @@ class AppTheme {
       displayColor: textStrong,
     );
   }
+}
+
+class IconsRounded {
+  const IconsRounded._();
+
+  static const IconData access_time = Icons.access_time;
+  static const IconData account_balance = Icons.account_balance;
+  static const IconData account_balance_wallet = Icons.account_balance_wallet;
+  static const IconData apartment = Icons.apartment;
+  static const IconData arrow_back = Icons.arrow_back;
+  static const IconData assignment_turned_in = Icons.assignment_turned_in;
+  static const IconData attach_file = Icons.attach_file;
+  static const IconData calendar_month = Icons.calendar_month;
+  static const IconData campaign = Icons.campaign;
+  static const IconData check = Icons.check;
+  static const IconData check_circle = Icons.check_circle;
+  static const IconData check_circle_outline = Icons.check_circle_outline;
+  static const IconData chevron_right = Icons.chevron_right;
+  static const IconData content_copy = Icons.content_copy;
+  static const IconData dark_mode = Icons.dark_mode;
+  static const IconData delete = Icons.delete;
+  static const IconData delete_outline = Icons.delete_outline;
+  static const IconData done_all = Icons.done_all;
+  static const IconData description = Icons.description;
+  static const IconData directions_car = Icons.directions_car;
+  static const IconData event = Icons.event;
+  static const IconData help_outline = Icons.help_outline;
+  static const IconData history = Icons.history;
+  static const IconData home = Icons.home;
+  static const IconData home_work = Icons.home_work;
+  static const IconData hourglass_empty = Icons.hourglass_empty;
+  static const IconData insert_chart = Icons.insert_chart;
+  static const IconData light_mode = Icons.light_mode;
+  static const IconData logout = Icons.logout;
+  static const IconData notifications = Icons.notifications;
+  static const IconData notifications_off = Icons.notifications_off;
+  static const IconData payments = Icons.payments;
+  static const IconData person = Icons.person;
+  static const IconData photo_camera = Icons.photo_camera;
+  static const IconData picture_as_pdf = Icons.picture_as_pdf;
+  static const IconData pin = Icons.pin;
+  static const IconData receipt_long = Icons.receipt_long;
+  static const IconData security = Icons.security;
+  static const IconData settings = Icons.settings;
+  static const IconData support_agent = Icons.support_agent;
+  static const IconData upload_file = Icons.upload_file;
+  static const IconData verified = Icons.verified;
+  static const IconData verified_user = Icons.verified_user;
+  static const IconData warning_rounded = Icons.warning;
 }

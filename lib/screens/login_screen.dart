@@ -571,6 +571,10 @@ class _LoginScreenState extends State<LoginScreen> {
     required Color linkColor,
     required bool isDark,
   }) {
+    final hasSupport = _supportEmail.isNotEmpty ||
+        _supportPhone.isNotEmpty ||
+        _supportWhatsApp.isNotEmpty ||
+        _supportUrl.isNotEmpty;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -619,30 +623,26 @@ class _LoginScreenState extends State<LoginScreen> {
           onSubmitted: (_) => login(),
         ),
         const SizedBox(height: 8),
-        Align(
-          alignment: Alignment.centerLeft,
-          child: TextButton(
-            onPressed: () => _openSupportSheet(
-              title: 'Recuperar contraseña',
-              message: 'Elige un canal para recuperar tu acceso.',
-              subject: 'Recuperar contraseña - Vecinus',
-            ),
-            style: TextButton.styleFrom(
-              padding: EdgeInsets.zero,
-              minimumSize: const Size(0, 0),
-              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-            ),
-            child: Text(
-              '¿Olvidaste tu contraseña?',
-              style: _interStyle(
-                size: 13,
-                weight: FontWeight.w600,
-                height: 1.4,
-                color: linkColor,
+        if (hasSupport)
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton(
+              onPressed: () => _openSupportSheet(
+                title: 'Recuperar contraseña',
+                message: 'Elige un canal para recuperar tu acceso.',
+                subject: 'Recuperar contraseña - Vecinus',
+              ),
+              child: Text(
+                '¿Olvidaste tu contraseña?',
+                style: _interStyle(
+                  size: 13,
+                  weight: FontWeight.w600,
+                  height: 1.4,
+                  color: linkColor,
+                ),
               ),
             ),
           ),
-        ),
         if (error != null) ...[
           const SizedBox(height: 8),
           _buildErrorCard(error!),

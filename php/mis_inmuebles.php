@@ -1,11 +1,11 @@
 <?php
 header("Content-Type: application/json; charset=UTF-8");
-header("Access-Control-Allow-Origin: *");
-header("Access-Control-Allow-Methods: POST");
-header("Access-Control-Allow-Headers: Content-Type, Authorization");
 
 require_once(__DIR__ . "/config/conexion.php");
 require_once(__DIR__ . "/helpers.php");
+
+apply_cors();
+handle_preflight();
 
 $conn = ConexionAPI::getInstance();
 $input = json_decode(file_get_contents("php://input"), true) ?? [];

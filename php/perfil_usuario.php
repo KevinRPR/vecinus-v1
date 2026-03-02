@@ -1,11 +1,11 @@
 <?php
 header("Content-Type: application/json; charset=UTF-8");
-header("Access-Control-Allow-Origin: *");
-header("Access-Control-Allow-Methods: POST");
-header("Access-Control-Allow-Headers: Content-Type, Authorization");
 
 require_once(__DIR__ . "/config/conexion.php");
 require_once(__DIR__ . "/helpers.php");
+
+apply_cors();
+handle_preflight();
 
 $conn = ConexionAPI::getInstance();
 $input = json_decode(file_get_contents("php://input"), true) ?? [];
@@ -20,7 +20,7 @@ if (!$token) {
 try {
     $userId = resolve_user_id_from_token($conn, $token);
 } catch (Exception $e) {
-    respond_error("Token inválido o expirado.", 401);
+    respond_error("Token invalido o expirado.", 401);
 }
 
 try {
@@ -80,7 +80,7 @@ function update_profile(PDO $conn, int $userId, array $input): void {
 
     if ($correo !== '') {
         if (!filter_var($correo, FILTER_VALIDATE_EMAIL)) {
-            throw new Exception("Correo inválido.");
+            throw new Exception("Correo invalido.");
         }
         $fields["correo"] = $correo;
     }
@@ -105,11 +105,11 @@ function change_password(PDO $conn, int $userId, array $input): void {
     $new = $input['password_nueva'] ?? '';
 
     if (!$current || !$new) {
-        throw new Exception("Debe indicar contraseña actual y nueva.");
+        throw new Exception("Debe indicar contrasena actual y nueva.");
     }
 
     if (strlen($new) < 6) {
-        throw new Exception("La nueva contraseña debe tener al menos 6 caracteres.");
+        throw new Exception("La nueva contrasena debe tener al menos 6 caracteres.");
     }
 
     $stmt = $conn->prepare("
@@ -121,21 +121,27 @@ function change_password(PDO $conn, int $userId, array $input): void {
     $stmt->execute([":id" => $userId]);
     $row = $stmt->fetch(PDO::FETCH_ASSOC);
 
-    if (!$row || sha1($current) !== $row['contrasena']) {
-        throw new Exception("La contraseña actual no es válida.");
+    $stored = $row['contrasena'] ?? '';
+    $isModern = preg_match('/^\\$2[aby]\\$|^\\$argon2/', $stored) === 1;
+    $legacyOk = hash_equals(sha1($current), $stored);
+    $modernOk = $isModern ? password_verify($current, $stored) : false;
+
+    if (!$legacyOk && !$modernOk) {
+        throw new Exception("La contrasena actual no es valida.");
     }
 
+    $newHash = password_hash($new, PASSWORD_DEFAULT);
     $stmt = $conn->prepare("
         UPDATE menu_login.usuario
         SET contrasena = :password
         WHERE id_usuario = :id
     ");
     $stmt->execute([
-        ":password" => sha1($new),
+        ":password" => $newHash,
         ":id" => $userId
     ]);
 
-    respond_success(["message" => "Contraseña actualizada."]);
+    respond_success(["message" => "Contrasena actualizada."]);
 }
 
 function update_avatar(PDO $conn, int $userId, array $input): void {
@@ -150,4 +156,4 @@ function update_avatar(PDO $conn, int $userId, array $input): void {
         "avatar_url" => $url
     ]);
 }
-
+?>

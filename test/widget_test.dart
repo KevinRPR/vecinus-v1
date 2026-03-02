@@ -13,12 +13,13 @@ import 'package:gestion_condominios/theme/app_theme.dart';
 
 void main() {
   testWidgets('Login renders brand content', (WidgetTester tester) async {
-    final binding = TestWidgetsFlutterBinding.ensureInitialized();
-    binding.window.physicalSizeTestValue = const Size(1080, 1920);
-    binding.window.devicePixelRatioTestValue = 1.0;
+    TestWidgetsFlutterBinding.ensureInitialized();
+    final view = tester.view;
+    view.physicalSize = const Size(1080, 1920);
+    view.devicePixelRatio = 1.0;
     addTearDown(() {
-      binding.window.clearPhysicalSizeTestValue();
-      binding.window.clearDevicePixelRatioTestValue();
+      view.resetPhysicalSize();
+      view.resetDevicePixelRatio();
     });
 
     await tester.pumpWidget(

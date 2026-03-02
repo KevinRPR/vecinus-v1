@@ -8,7 +8,7 @@ class ThemeController {
 
   static const _prefsKey = 'theme_mode';
 
-  final ValueNotifier<ThemeMode> themeMode = ValueNotifier(ThemeMode.light);
+  final ValueNotifier<ThemeMode> themeMode = ValueNotifier(ThemeMode.system);
 
   Future<void> loadThemeMode() async {
     final prefs = await SharedPreferences.getInstance();
@@ -34,8 +34,10 @@ class ThemeController {
         return ThemeMode.light;
       case 'dark':
         return ThemeMode.dark;
+      case 'system':
+        return ThemeMode.system;
       default:
-        return ThemeMode.light;
+        return ThemeMode.system;
     }
   }
 

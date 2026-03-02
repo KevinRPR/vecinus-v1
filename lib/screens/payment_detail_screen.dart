@@ -6,8 +6,12 @@ import '../models/pago.dart';
 import '../models/payment_report.dart';
 import '../services/api_service.dart';
 import '../theme/app_theme.dart';
+import '../ui_system/components/app_empty_state.dart';
+import '../ui_system/components/app_icon_button.dart';
+import '../ui_system/components/app_status_chip.dart';
+import '../ui_system/formatters/money.dart';
+import '../ui_system/formatters/safe_text.dart';
 import 'inmueble_detail_screen.dart';
-import 'payment_history_screen.dart';
 import 'report_payment_screen.dart';
 
 typedef ReportesLoader = Future<List<PaymentReport>> Function({
@@ -16,20 +20,6 @@ typedef ReportesLoader = Future<List<PaymentReport>> Function({
 });
 
 enum _PagoState { pending, overdue, paid }
-
-class _PagoBadge {
-  final String label;
-  final Color color;
-
-  const _PagoBadge({required this.label, required this.color});
-}
-
-class _StatusInfo {
-  final String label;
-  final Color color;
-
-  const _StatusInfo({required this.label, required this.color});
-}
 
 class PaymentDetailScreen extends StatefulWidget {
   final Inmueble inmueble;
@@ -51,8 +41,6 @@ class PaymentDetailScreen extends StatefulWidget {
 
 class _PaymentDetailScreenState extends State<PaymentDetailScreen> {
   List<PaymentReport> _reportes = [];
-  bool _loadingReportes = false;
-  String? _reportesError;
 
   @override
   void initState() {
@@ -61,10 +49,6 @@ class _PaymentDetailScreenState extends State<PaymentDetailScreen> {
   }
 
   Future<void> _loadReportes() async {
-    setState(() {
-      _loadingReportes = true;
-      _reportesError = null;
-    });
     try {
       final loader = widget.reportesLoader ?? ApiService.getMisPagosReportados;
       final items = await loader(
@@ -77,13 +61,9 @@ class _PaymentDetailScreenState extends State<PaymentDetailScreen> {
       });
     } catch (e) {
       if (!mounted) return;
-      setState(() {
-        _reportesError = e.toString();
-      });
-    } finally {
-      if (mounted) {
-        setState(() => _loadingReportes = false);
-      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('No se pudo cargar los reportes: $e')),
+      );
     }
   }
 
@@ -100,21 +80,22 @@ class _PaymentDetailScreenState extends State<PaymentDetailScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Detalle de pago'),
-        centerTitle: true,
         actions: [
-          IconButton(
+          AppIconButton(
+            icon: IconsRounded.apartment,
             tooltip: 'Ver inmueble',
-            icon: const Icon(Icons.apartment_outlined),
             onPressed: () {
               Navigator.of(context).push(
                 MaterialPageRoute(
                   builder: (_) => InmuebleDetailScreen(
                     inmueble: widget.inmueble,
+                    token: widget.token,
                   ),
                 ),
               );
             },
           ),
+          const SizedBox(width: 12),
         ],
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(24),
@@ -134,37 +115,13 @@ class _PaymentDetailScreenState extends State<PaymentDetailScreen> {
           padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
           children: [
             _estadoCuentaCard(theme, cardColor, border, shadow, muted),
-            const SizedBox(height: 24),
-            _sectionCard(
-              title: 'Desglose de la deuda',
-              icon: Icons.receipt_long,
-              child: _pagosActivos.isEmpty
-                  ? _emptyStateCard(
-                      context,
-                      icon: Icons.receipt_long_outlined,
-                      title: 'No hay deuda pendiente.',
-                      subtitle: 'Cuando exista deuda, aparecera aqui.',
-                    )
-                  : _facturaDeudaBody(context, muted),
-            ),
-            const SizedBox(height: 24),
-            _sectionCard(
-              title: 'Pagos reportados',
-              icon: Icons.upload_file_outlined,
-              action: _historyActionButton(context),
-              child: _reportedPaymentsSection(cardColor, shadow, muted),
-            ),
+            const SizedBox(height: 20),
+            _contribucionSection(context, muted),
+            const SizedBox(height: 20),
+            _respaldoSection(context),
+            const SizedBox(height: 20),
+            _trazabilidadSection(context, muted),
           ],
-        ),
-      ),
-    );
-  }
-
-  void _openHistorialPagos(BuildContext context) {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => PaymentHistoryScreen(
-          inmueble: widget.inmueble,
         ),
       ),
     );
@@ -172,146 +129,286 @@ class _PaymentDetailScreenState extends State<PaymentDetailScreen> {
 
   String _subtitleText() {
     final condominio = _condominioLabel();
-    final unidad = widget.inmueble.identificacion?.trim();
-    if (unidad != null && unidad.isNotEmpty) {
+    final unidad = safeTextOrEmpty(widget.inmueble.identificacion);
+    if (unidad.isNotEmpty) {
       return '$condominio - $unidad';
     }
     return condominio;
   }
 
-  Widget _sectionCard({
-    required String title,
-    required IconData icon,
-    required Widget child,
-    Widget? action,
-  }) {
+  Widget _contribucionSection(BuildContext context, Color muted) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
-    return Container(
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
-      decoration: BoxDecoration(
-        color: theme.cardColor,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: theme.colorScheme.outline),
-        boxShadow: [
-          if (!isDark)
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.06),
-              blurRadius: 14,
-              offset: const Offset(0, 8),
-            ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(icon, color: AppColors.brandBlue600),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  title,
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-              if (action != null) action,
-            ],
+    final items = _pagosActivos;
+    final total = items.fold<double>(0, (sum, p) => sum + _parseMonto(p.monto));
+
+    if (items.isEmpty) {
+      return const AppEmptyState(
+        icon: IconsRounded.receipt_long,
+        title: 'No hay deuda pendiente.',
+        subtitle: 'Cuando exista deuda, aparecera aqui.',
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Tu contribucion compartida',
+          style: theme.textTheme.titleSmall?.copyWith(
+            fontWeight: FontWeight.w700,
           ),
-          const SizedBox(height: 12),
-          child,
-        ],
-      ),
-    );
-  }
-
-  Widget _historyActionButton(BuildContext context) {
-    return OutlinedButton.icon(
-      onPressed: () => _openHistorialPagos(context),
-      icon: const Icon(Icons.history, size: 18),
-      label: const Text('Ver historial'),
-      style: OutlinedButton.styleFrom(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        minimumSize: const Size(0, 36),
-        foregroundColor: AppColors.brandBlue600,
-        side: const BorderSide(color: AppColors.brandBlue600),
-      ),
-    );
-  }
-
-  Widget _emptyStateCard(
-    BuildContext context, {
-    required IconData icon,
-    required String title,
-    String? subtitle,
-    Widget? action,
-  }) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-    final muted =
-        theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.7) ?? AppColors.textMuted;
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: theme.cardColor,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: theme.colorScheme.outline),
-        boxShadow: isDark
-            ? []
-            : [
+        ),
+        const SizedBox(height: 10),
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: theme.cardColor,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: theme.colorScheme.outline),
+            boxShadow: [
+              if (!isDark)
                 BoxShadow(
                   color: Colors.black.withValues(alpha: 0.06),
-                  blurRadius: 16,
+                  blurRadius: 14,
                   offset: const Offset(0, 8),
                 ),
-              ],
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, color: theme.colorScheme.primary),
-          const SizedBox(height: 8),
-          Text(
-            title,
-            textAlign: TextAlign.center,
-            style: theme.textTheme.bodyMedium?.copyWith(
-              fontWeight: FontWeight.w600,
-            ),
+            ],
           ),
-          if (subtitle != null) ...[
-            const SizedBox(height: 6),
-            Text(
-              subtitle,
-              textAlign: TextAlign.center,
-              style: TextStyle(color: muted),
-            ),
-          ],
-          if (action != null) ...[
-            const SizedBox(height: 12),
-            action,
-          ],
-        ],
+          child: Column(
+            children: [
+              for (int i = 0; i < items.length; i++) ...[
+                _contribucionItem(context, items[i], muted),
+                if (i != items.length - 1) const Divider(),
+              ],
+              const Divider(),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'Total a contribuir',
+                    style: TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                  Text(
+                    _formatCurrency(total),
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _contribucionItem(BuildContext context, Pago pago, Color muted) {
+    final monto = _parseMonto(pago.monto);
+    final fecha = _formatDateLabel(
+      pago.fecha ?? pago.fechaEmision ?? pago.fechaVencimiento,
+    );
+    final description = safeText(pago.descripcion, fallback: 'Contribucion');
+    final status = _statusForPago(pago);
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          height: 36,
+          width: 36,
+          decoration: BoxDecoration(
+            color: AppColors.brandBlue600.withValues(alpha: 0.12),
+            shape: BoxShape.circle,
+          ),
+          child: const Icon(
+            IconsRounded.receipt_long,
+            color: AppColors.brandBlue600,
+            size: 18,
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  description,
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+              const SizedBox(height: 4),
+              Text(
+                fecha,
+                style: TextStyle(color: muted, fontSize: 12),
+              ),
+              const SizedBox(height: 6),
+              AppStatusChip(status: status, compact: true),
+            ],
+          ),
+        ),
+        const SizedBox(width: 8),
+        Text(
+          _formatCurrency(monto),
+          style: const TextStyle(
+            fontWeight: FontWeight.w700,
+            fontFeatures: [FontFeature.tabularFigures()],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _respaldoSection(BuildContext context) {
+    final theme = Theme.of(context);
+    final pago = _firstPagoWithDocument();
+    final hasDoc = pago != null;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Respaldo',
+          style: theme.textTheme.titleSmall?.copyWith(
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        const SizedBox(height: 8),
+        _respaldoLink(
+          context,
+          icon: IconsRounded.receipt_long,
+          label: 'Ver respaldo de gastos',
+          enabled: hasDoc,
+          onTap: hasDoc ? () => _openDocument(context, pago) : null,
+        ),
+        _respaldoLink(
+          context,
+          icon: IconsRounded.picture_as_pdf,
+          label: 'Descargar comprobante PDF',
+          enabled: hasDoc,
+          onTap: hasDoc ? () => _openDocument(context, pago) : null,
+        ),
+      ],
+    );
+  }
+
+  Widget _respaldoLink(
+    BuildContext context, {
+    required IconData icon,
+    required String label,
+    required bool enabled,
+    VoidCallback? onTap,
+  }) {
+    final theme = Theme.of(context);
+    return TextButton.icon(
+      onPressed: enabled ? onTap : null,
+      icon: Icon(icon, size: 18),
+      label: Text(label),
+      style: TextButton.styleFrom(
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        minimumSize: const Size.fromHeight(44),
+        alignment: Alignment.centerLeft,
+        foregroundColor: enabled
+            ? AppColors.brandBlue600
+            : theme.colorScheme.onSurface.withValues(alpha: 0.4),
       ),
     );
   }
 
-  _StatusInfo _estadoCuentaStatus() {
+  Widget _trazabilidadSection(BuildContext context, Color muted) {
+    final theme = Theme.of(context);
+    final step = _trazabilidadStep();
+    const items = [
+      _TraceItem('Emitido', IconsRounded.assignment_turned_in),
+      _TraceItem('Pagado', IconsRounded.payments),
+      _TraceItem('Confirmado', IconsRounded.verified),
+    ];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Trazabilidad de aporte',
+          style: theme.textTheme.titleSmall?.copyWith(
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: List.generate(items.length, (index) {
+            final active = index <= step;
+            final color = active
+                ? AppColors.brandBlue600
+                : theme.colorScheme.onSurface.withValues(alpha: 0.35);
+            return Expanded(
+              child: Column(
+                children: [
+                  Container(
+                    height: 40,
+                    width: 40,
+                    decoration: BoxDecoration(
+                      color: color.withValues(alpha: 0.12),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(items[index].icon, color: color, size: 20),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    items[index].label,
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: active ? color : muted,
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }),
+        ),
+      ],
+    );
+  }
+
+  int _trazabilidadStep() {
+    if (widget.totalDeuda <= 0) return 2;
+    if (_reportes.any((r) => r.estado == 'EN_PROCESO')) return 1;
+    return 0;
+  }
+
+  Pago? _firstPagoWithDocument() {
+    for (final pago in widget.inmueble.pagos) {
+      final url = _pickDocumentUrl(pago);
+      if (url != null && url.trim().isNotEmpty) {
+        return pago;
+      }
+    }
+    return null;
+  }
+
+  String _formatDateLabel(String? raw) {
+    if (raw == null || raw.trim().isEmpty) {
+      return 'No disponible';
+    }
+    final parsed = DateTime.tryParse(raw);
+    if (parsed == null) return safeText(raw);
+    String two(int n) => n.toString().padLeft(2, '0');
+    return '${parsed.year}-${two(parsed.month)}-${two(parsed.day)}';
+  }
+
+  AppStatus _estadoCuentaStatus() {
     final deuda = widget.totalDeuda < 0 ? 0.0 : widget.totalDeuda;
     if (deuda <= 0) {
-      return const _StatusInfo(label: 'Sin deuda', color: AppColors.success);
+      return AppStatus.alDia;
     }
     final enProceso = _reportes.any((r) => r.estado == 'EN_PROCESO');
     if (enProceso) {
-      return const _StatusInfo(label: 'En proceso', color: AppColors.info);
+      return AppStatus.enProceso;
     }
     final vencido =
         _pagosActivos.any((p) => _classifyPago(p) == _PagoState.overdue);
     if (vencido) {
-      return const _StatusInfo(label: 'Atrasado', color: AppColors.error);
+      return AppStatus.atrasado;
     }
-    return const _StatusInfo(label: 'Pendiente de pago', color: AppColors.warning);
+    return AppStatus.pendiente;
   }
 
   Widget _estadoCuentaCard(
@@ -328,6 +425,8 @@ class _PaymentDetailScreenState extends State<PaymentDetailScreen> {
     );
     final status = _estadoCuentaStatus();
     final cobertura = _coberturaTexto();
+    final nextDate = safeText(widget.inmueble.proximaFechaPago);
+    final canReport = !sinDeuda;
 
     return Container(
       padding: const EdgeInsets.all(18),
@@ -356,7 +455,7 @@ class _PaymentDetailScreenState extends State<PaymentDetailScreen> {
                 ),
               ),
               const Spacer(),
-              _statusPill(label: status.label, color: status.color),
+              AppStatusChip(status: status, compact: true),
             ],
           ),
           const SizedBox(height: 12),
@@ -376,14 +475,14 @@ class _PaymentDetailScreenState extends State<PaymentDetailScreen> {
           Row(
             children: [
               Icon(
-                Icons.event_available_outlined,
+                IconsRounded.calendar_month,
                 size: 18,
                 color: theme.colorScheme.primary,
               ),
               const SizedBox(width: 6),
               Expanded(
                 child: Text(
-                  'Proximo pago: ${widget.inmueble.proximaFechaPago?.isNotEmpty == true ? widget.inmueble.proximaFechaPago : '--'}',
+                  'Proximo aporte: $nextDate',
                   style: TextStyle(color: muted),
                 ),
               ),
@@ -414,297 +513,14 @@ class _PaymentDetailScreenState extends State<PaymentDetailScreen> {
           const SizedBox(height: 16),
           SizedBox(
             width: double.infinity,
-            child: sinDeuda
-                ? OutlinedButton.icon(
-                    onPressed: () => _openHistorialPagos(context),
-                    icon: const Icon(Icons.history),
-                    label: const Text('Ver historial de pagos'),
-                    style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      foregroundColor: AppColors.brandBlue600,
-                      side: const BorderSide(color: AppColors.brandBlue600),
-                    ),
-                  )
-                : ElevatedButton.icon(
-                    onPressed: () => _reportarPago(context),
-                    icon: const Icon(Icons.upload_file_rounded),
-                    label: const Text('Reportar pago'),
-                  ),
+            child: ElevatedButton.icon(
+              onPressed: canReport ? () => _reportarPago(context) : null,
+              icon: const Icon(IconsRounded.upload_file),
+              label: Text(canReport ? 'Reportar pago' : 'Sin deuda pendiente'),
+            ),
           ),
         ],
       ),
-    );
-  }
-
-  Widget _reportedPaymentsSection(Color cardColor, Color shadow, Color muted) {
-    if (_loadingReportes) {
-      return const Padding(
-        padding: EdgeInsets.symmetric(vertical: 12),
-        child: Center(child: CircularProgressIndicator()),
-      );
-    }
-    if (_reportesError != null) {
-      return _emptyStateCard(
-        context,
-        icon: Icons.cloud_off_outlined,
-        title: 'No se pudieron cargar los reportes.',
-        subtitle: 'Revisa tu conexion e intenta de nuevo.',
-        action: OutlinedButton(
-          onPressed: _loadReportes,
-          child: const Text('Reintentar'),
-        ),
-      );
-    }
-    if (_reportes.isEmpty) {
-      return _emptyStateCard(
-        context,
-        icon: Icons.inbox_outlined,
-        title: 'No hay pagos reportados.',
-        subtitle: 'Cuando reportes un pago aparecera aqui.',
-      );
-    }
-
-    return Column(
-      children: _reportes.map((r) {
-        final status = r.estado.toUpperCase();
-        final chip = _statusChip(status);
-        final created =
-            r.createdAt?.toIso8601String().split('T').first ?? '--';
-        return Container(
-          margin: const EdgeInsets.only(bottom: 12),
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            color: cardColor,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: Theme.of(context).colorScheme.outline),
-            boxShadow: [
-              if (shadow != Colors.transparent)
-                BoxShadow(
-                  color: shadow,
-                  blurRadius: 10,
-                  offset: const Offset(0, 6),
-                ),
-            ],
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  const Icon(
-                    Icons.receipt_long,
-                    color: AppColors.brandBlue600,
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      'Reporte ${r.id}',
-                      style: const TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                  ),
-                  chip,
-                ],
-              ),
-              const SizedBox(height: 6),
-                Text('Fecha pago: ${r.fechaPago}', style: TextStyle(color: muted)),
-              const SizedBox(height: 4),
-              Row(
-                children: [
-                  Expanded(
-                    child:
-                        Text('Monto base', style: TextStyle(color: muted)),
-                  ),
-                  Text(
-                    _formatCurrency(r.totalBase),
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w700,
-                      fontFeatures: [FontFeature.tabularFigures()],
-                    ),
-                  ),
-                ],
-              ),
-              if (r.observacion?.isNotEmpty == true) ...[
-                const SizedBox(height: 4),
-                Text('Obs: ${r.observacion}', style: TextStyle(color: muted)),
-              ],
-              if (status == 'RECHAZADO' && r.motivoRechazo != null && r.motivoRechazo!.isNotEmpty) ...[
-                const SizedBox(height: 6),
-                Text(
-                  'Motivo rechazo: ${r.motivoRechazo}',
-                  style: const TextStyle(
-                    color: AppColors.error,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
-              if (r.cubreTotalEstimado != null) ...[
-                const SizedBox(height: 4),
-                Text(
-                  r.cubreTotalEstimado! ? 'Cubre la deuda completa (en proceso)' : 'Pago parcial en proceso',
-                  style: TextStyle(
-                    color: r.cubreTotalEstimado!
-                        ? AppColors.success
-                        : AppColors.warning,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
-              if (r.evidenciaUrl != null && r.evidenciaUrl!.isNotEmpty) ...[
-                const SizedBox(height: 8),
-                TextButton.icon(
-                  onPressed: () async {
-                    final uri = Uri.parse(r.evidenciaUrl!);
-                    await launchUrl(
-                      uri,
-                      mode: LaunchMode.externalApplication,
-                    );
-                  },
-                  icon: const Icon(Icons.attach_file, size: 18),
-                  label: const Text('Ver comprobante'),
-                ),
-              ],
-              const SizedBox(height: 4),
-              Text(
-                'Enviado: $created',
-                style: TextStyle(color: muted, fontSize: 12),
-              ),
-            ],
-          ),
-        );
-      }).toList(),
-    );
-  }
-
-  Widget _statusChip(String estado) {
-    Color color;
-    String label;
-    switch (estado) {
-      case 'APROBADO':
-        color = AppColors.success;
-        label = 'Aprobado';
-        break;
-      case 'RECHAZADO':
-        color = AppColors.error;
-        label = 'Rechazado';
-        break;
-      default:
-        color = AppColors.info;
-        label = 'En proceso';
-    }
-    return _statusPill(label: label, color: color);
-  }
-
-  Widget _statusPill({required String label, required Color color}) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: color.withValues(alpha: 0.3)),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(color: color, fontWeight: FontWeight.w700, fontSize: 12),
-      ),
-    );
-  }
-
-  Widget _facturaDeudaBody(
-    BuildContext context,
-    Color muted,
-  ) {
-    final items = _pagosActivos;
-    final total = items.fold<double>(0, (sum, p) => sum + _parseMonto(p.monto));
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        ...List.generate(items.length, (index) {
-          final pago = items[index];
-          final monto = _parseMonto(pago.monto);
-          final badge = _PagoBadge(
-            label: _statusLabel(pago),
-            color: _statusColor(pago),
-          );
-          return Column(
-            children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          pago.descripcion ?? 'Pago',
-                          style: const TextStyle(fontWeight: FontWeight.w600),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          pago.fecha ?? pago.fechaEmision ?? pago.fechaVencimiento ?? '--',
-                          style: TextStyle(color: muted, fontSize: 12),
-                        ),
-                        const SizedBox(height: 6),
-                        _statusPill(label: badge.label, color: badge.color),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      Text(
-                        _formatCurrency(monto),
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w700,
-                          fontFeatures: [FontFeature.tabularFigures()],
-                        ),
-                      ),
-                      Builder(
-                        builder: (context) {
-                          final hasDocument =
-                              _pickDocumentUrl(pago)?.trim().isNotEmpty == true;
-                          return TextButton.icon(
-                            onPressed:
-                                hasDocument ? () => _openDocument(context, pago) : null,
-                            icon: Icon(
-                              hasDocument
-                                  ? Icons.picture_as_pdf
-                                  : Icons.remove_circle_outline,
-                              size: 16,
-                            ),
-                            label: Text(hasDocument ? 'Documento' : 'No disponible'),
-                            style: TextButton.styleFrom(
-                              padding: EdgeInsets.zero,
-                              minimumSize: const Size(0, 32),
-                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                            ),
-                          );
-                        },
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-              if (index < items.length - 1) const Divider(),
-            ],
-          );
-        }),
-        const Divider(),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            const Text(
-              'Total',
-              style: TextStyle(fontWeight: FontWeight.w700),
-            ),
-            Text(
-              _formatCurrency(total),
-              style: const TextStyle(fontWeight: FontWeight.w700),
-            ),
-          ],
-        ),
-      ],
     );
   }
 
@@ -720,14 +536,14 @@ class _PaymentDetailScreenState extends State<PaymentDetailScreen> {
   }
 
   String _condominioLabel() {
-    final nombre = widget.inmueble.nombreCondominio;
-    if (nombre != null && nombre.trim().isNotEmpty) {
-      return nombre.trim();
+    final nombre = safeTextOrEmpty(widget.inmueble.nombreCondominio);
+    if (nombre.isNotEmpty) {
+      return nombre;
     }
     return 'Condominio #${widget.inmueble.idCondominio}';
   }
 
-  String _formatCurrency(double value) => '\$${value.toStringAsFixed(2)}';
+  String _formatCurrency(double value) => formatMoney(value);
   double _parseMonto(String? raw) =>
       double.tryParse((raw ?? '').replaceAll(',', '.')) ?? 0;
 
@@ -756,27 +572,15 @@ class _PaymentDetailScreenState extends State<PaymentDetailScreen> {
     return _PagoState.pending;
   }
 
-  String _statusLabel(Pago pago) {
+  AppStatus _statusForPago(Pago pago) {
     final state = _classifyPago(pago);
     switch (state) {
       case _PagoState.overdue:
-        return 'Atrasado';
+        return AppStatus.atrasado;
       case _PagoState.pending:
-        return 'Pendiente';
+        return AppStatus.pendiente;
       case _PagoState.paid:
-        return 'Pagada';
-    }
-  }
-
-  Color _statusColor(Pago pago) {
-    final state = _classifyPago(pago);
-    switch (state) {
-      case _PagoState.overdue:
-        return AppColors.error;
-      case _PagoState.pending:
-        return AppColors.warning;
-      case _PagoState.paid:
-        return AppColors.success;
+        return AppStatus.alDia;
     }
   }
 
@@ -856,4 +660,11 @@ class _PaymentDetailScreenState extends State<PaymentDetailScreen> {
     }
     return null;
   }
+}
+
+class _TraceItem {
+  final String label;
+  final IconData icon;
+
+  const _TraceItem(this.label, this.icon);
 }

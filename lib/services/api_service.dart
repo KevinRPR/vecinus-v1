@@ -6,6 +6,15 @@ import '../models/inmueble.dart';
 import '../models/user.dart';
 import '../models/payment_report.dart';
 
+class ApiAuthException implements Exception {
+  final String message;
+
+  const ApiAuthException(this.message);
+
+  @override
+  String toString() => message;
+}
+
 class ApiService {
   static const String baseUrl = 'https://rhodiumdev.com/condominio/movil/';
   static String get baseRoot =>
@@ -54,9 +63,13 @@ class ApiService {
     if (response.statusCode == 200 && data['success'] == true) {
       final List lista = data['inmuebles'];
       return lista.map((e) => Inmueble.fromJson(e)).toList();
-    } else {
-      throw Exception(data['error'] ?? 'Error desconocido');
     }
+
+    final message = data['error'] ?? 'Error desconocido';
+    if (response.statusCode == 401) {
+      throw ApiAuthException(message);
+    }
+    throw Exception(message);
   }
 
   static Future<User> fetchProfile(String token) async {
