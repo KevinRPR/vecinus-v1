@@ -12,6 +12,7 @@ import '../theme/app_theme.dart';
 import '../ui_system/components/app_empty_state.dart';
 import '../ui_system/formatters/money.dart';
 import '../ui_system/formatters/safe_text.dart';
+import '../ui_system/perf/app_perf.dart';
 
 class DashboardScreen extends StatelessWidget {
   final User user;
@@ -76,6 +77,23 @@ class DashboardScreen extends StatelessWidget {
           textStrong: textStrong,
           isDark: isDark,
         );
+        final breakdownCard = _buildDebtBreakdownCard(
+          cardColor: cardColor,
+          borderColor: borderColor,
+          shadowColor: shadowColor,
+          textMuted: textMuted,
+          textStrong: textStrong,
+        );
+        final statusSection = Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            statusCard,
+            if (breakdownCard != null) ...[
+              const SizedBox(height: 12),
+              breakdownCard,
+            ],
+          ],
+        );
         final announcementCard = _buildCommunityAnnouncementsSection(
           context: context,
           cardColor: cardColor,
@@ -95,8 +113,8 @@ class DashboardScreen extends StatelessWidget {
         );
         final cards = prefs.inmueble.cardOrder ==
                 DashboardCardOrder.announcementsFirst
-            ? [announcementCard, statusCard, activitySection]
-            : [statusCard, announcementCard, activitySection];
+            ? [announcementCard, statusSection, activitySection]
+            : [statusSection, announcementCard, activitySection];
 
         return Scaffold(
           backgroundColor: background,
@@ -172,7 +190,7 @@ class DashboardScreen extends StatelessWidget {
     final inmuebleCount = inmuebles.length;
     final pendingCount =
         inmuebleCount - inmuebles.where((item) => _parseMonto(item.deudaActual) <= 0).length;
-    final title = isAlDia ? 'Estas al dia' : 'Total adeudado';
+    final title = isAlDia ? 'Estas al dia' : 'Deuda total';
     final subtitle = isAlDia
         ? 'Sin deudas pendientes'
         : '$pendingCount con deuda';
@@ -204,6 +222,8 @@ class DashboardScreen extends StatelessWidget {
               children: [
                 Text(
                   title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w700,
@@ -344,6 +364,142 @@ class DashboardScreen extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  Widget? _buildDebtBreakdownCard({
+    required Color cardColor,
+    required Color borderColor,
+    required Color shadowColor,
+    required Color textMuted,
+    required Color textStrong,
+  }) {
+    if (inmuebles.isEmpty) return null;
+
+    final items = inmuebles.toList()
+      ..sort(
+        (a, b) => _parseMonto(b.deudaActual).compareTo(_parseMonto(a.deudaActual)),
+      );
+
+    return _glassCard(
+      color: cardColor,
+      borderColor: borderColor,
+      shadowColor: shadowColor,
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Detalle por inmueble',
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+              color: textStrong,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Inmueble',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: textMuted,
+                  ),
+                ),
+              ),
+              Text(
+                'Deuda',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  color: textMuted,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          for (int i = 0; i < items.length; i++) ...[
+            _buildDebtRow(
+              items[i],
+              textMuted: textMuted,
+              textStrong: textStrong,
+            ),
+            if (i != items.length - 1)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Divider(
+                  height: 1,
+                  color: borderColor.withValues(alpha: 0.6),
+                ),
+              ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDebtRow(
+    Inmueble item, {
+    required Color textMuted,
+    required Color textStrong,
+  }) {
+    final title = _inmuebleTitle(item);
+    final subtitle = _inmuebleSubtitle(item);
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: textStrong,
+                ),
+              ),
+              if (subtitle.isNotEmpty) ...[
+                const SizedBox(height: 2),
+                Text(
+                  subtitle,
+                  style: TextStyle(fontSize: 11, color: textMuted),
+                ),
+              ],
+            ],
+          ),
+        ),
+        const SizedBox(width: 12),
+        Text(
+          _formatCurrency(_parseMonto(item.deudaActual)),
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w700,
+            color: textStrong,
+          ),
+        ),
+      ],
+    );
+  }
+
+  String _inmuebleTitle(Inmueble item) {
+    final ident = safeTextOrEmpty(item.identificacion);
+    if (ident.isNotEmpty) return ident;
+    final correlativo = safeTextOrEmpty(item.correlativo);
+    if (correlativo.isNotEmpty) return correlativo;
+    return 'Inmueble ${item.idInmueble}';
+  }
+
+  String _inmuebleSubtitle(Inmueble item) {
+    final condo = safeTextOrEmpty(item.nombreCondominio);
+    if (condo.isNotEmpty) return condo;
+    final tipo = safeTextOrEmpty(item.tipo);
+    if (tipo.isNotEmpty) return tipo;
+    return '';
   }
 
   Widget _alertCard(
@@ -739,65 +895,73 @@ class _DashboardHeader extends StatelessWidget {
     final titleStyle = theme.appBarTheme.titleTextStyle ??
         theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700);
 
-    return ClipRect(
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-        child: Container(
-          decoration: BoxDecoration(
-            color: backgroundColor,
-            border: Border(bottom: BorderSide(color: borderColor)),
-          ),
-          padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+    final blurSigma = AppPerf.blurSigma(context, 18);
+    final headerContent = Container(
+      decoration: BoxDecoration(
+        color: backgroundColor,
+        border: Border(bottom: BorderSide(color: borderColor)),
+      ),
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text('Inicio', style: titleStyle),
-                  _buildAvatar(isDark),
-                ],
+              Text('Inicio', style: titleStyle),
+              _buildAvatar(isDark),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Row(
+            children: [
+              Flexible(
+                child: Text(
+                  'Hola, ${user.displayName}',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: textMuted,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
-              const SizedBox(height: 6),
-              Row(
-                children: [
-                  Flexible(
-                    child: Text(
-                      'Hola, ${user.displayName}',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: textMuted,
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  Container(
-                    width: 4,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: textMuted.withValues(alpha: 0.7),
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  Icon(IconsRounded.history, size: 12, color: textMuted),
-                  const SizedBox(width: 4),
-                  Text(
-                    syncLabel,
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: textMuted,
-                    ),
-                  ),
-                ],
+              const SizedBox(width: 6),
+              Container(
+                width: 4,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: textMuted.withValues(alpha: 0.7),
+                  shape: BoxShape.circle,
+                ),
+              ),
+              const SizedBox(width: 6),
+              Icon(IconsRounded.history, size: 12, color: textMuted),
+              const SizedBox(width: 4),
+              Text(
+                syncLabel,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: textMuted,
+                ),
               ),
             ],
           ),
-        ),
+        ],
       ),
+    );
+
+    return ClipRect(
+      child: blurSigma == 0
+          ? headerContent
+          : BackdropFilter(
+              filter: ImageFilter.blur(
+                sigmaX: blurSigma,
+                sigmaY: blurSigma,
+              ),
+              child: headerContent,
+            ),
     );
   }
 

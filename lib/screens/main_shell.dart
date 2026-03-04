@@ -12,6 +12,7 @@ import '../services/notification_service.dart';
 import '../preferences_controller.dart';
 import '../animations/transitions.dart';
 import '../theme/app_theme.dart';
+import '../ui_system/perf/app_perf.dart';
 import 'dashboard_screen.dart';
 import 'notifications_screen.dart';
 import 'payments_screen.dart';
@@ -270,95 +271,103 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
     final hasAlerts = NotificationService.all().isNotEmpty;
     final dotBorderColor = theme.colorScheme.surface;
 
-    return ClipRect(
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-        child: Container(
-          padding: EdgeInsets.fromLTRB(24, 10, 24, 10 + bottomInset),
-          decoration: BoxDecoration(
-            color: background,
-            border: Border(top: BorderSide(color: borderColor)),
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: List.generate(items.length, (index) {
-              final selected = _currentIndex == index;
-              final item = items[index];
-              final iconColor = selected ? Colors.white : muted;
-              final labelColor = selected ? primary : muted;
+    final blurSigma = AppPerf.blurSigma(context, 12);
+    final navContent = Container(
+      padding: EdgeInsets.fromLTRB(24, 10, 24, 10 + bottomInset),
+      decoration: BoxDecoration(
+        color: background,
+        border: Border(top: BorderSide(color: borderColor)),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: List.generate(items.length, (index) {
+          final selected = _currentIndex == index;
+          final item = items[index];
+          final iconColor = selected ? Colors.white : muted;
+          final labelColor = selected ? primary : muted;
 
-              return Expanded(
-                child: Semantics(
-                  label: item.label,
-                  button: true,
-                  selected: selected,
-                  child: Material(
-                    color: Colors.transparent,
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(16),
-                      onTap: () => _onTabSelected(index),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          AnimatedContainer(
-                            duration: const Duration(milliseconds: 200),
-                            padding: const EdgeInsets.all(8),
-                            decoration: selected
-                                ? BoxDecoration(
-                                    color: primary,
-                                    borderRadius: BorderRadius.circular(14),
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: primary.withValues(alpha: 0.3),
-                                        blurRadius: 16,
-                                        offset: const Offset(0, 6),
-                                      ),
-                                    ],
-                                  )
-                                : null,
-                            child: Stack(
-                              clipBehavior: Clip.none,
-                              children: [
-                                Icon(item.icon, color: iconColor, size: 22),
-                                if (index == 2 && hasAlerts)
-                                  Positioned(
-                                    top: -2,
-                                    right: -2,
-                                    child: Container(
-                                      width: 8,
-                                      height: 8,
-                                      decoration: BoxDecoration(
-                                        color: AppColors.error,
-                                        shape: BoxShape.circle,
-                                        border: Border.all(
-                                          color: dotBorderColor,
-                                          width: 1.5,
-                                        ),
-                                      ),
+          return Expanded(
+            child: Semantics(
+              label: item.label,
+              button: true,
+              selected: selected,
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(16),
+                  onTap: () => _onTabSelected(index),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      AnimatedContainer(
+                        duration: const Duration(milliseconds: 200),
+                        padding: const EdgeInsets.all(8),
+                        decoration: selected
+                            ? BoxDecoration(
+                                color: primary,
+                                borderRadius: BorderRadius.circular(14),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: primary.withValues(alpha: 0.3),
+                                    blurRadius: 16,
+                                    offset: const Offset(0, 6),
+                                  ),
+                                ],
+                              )
+                            : null,
+                        child: Stack(
+                          clipBehavior: Clip.none,
+                          children: [
+                            Icon(item.icon, color: iconColor, size: 22),
+                            if (index == 2 && hasAlerts)
+                              Positioned(
+                                top: -2,
+                                right: -2,
+                                child: Container(
+                                  width: 8,
+                                  height: 8,
+                                  decoration: BoxDecoration(
+                                    color: AppColors.error,
+                                    shape: BoxShape.circle,
+                                    border: Border.all(
+                                      color: dotBorderColor,
+                                      width: 1.5,
                                     ),
                                   ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            item.label,
-                            style: TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.w700,
-                              color: labelColor,
-                            ),
-                          ),
-                        ],
+                                ),
+                              ),
+                          ],
+                        ),
                       ),
-                    ),
+                      const SizedBox(height: 4),
+                      Text(
+                        item.label,
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w700,
+                          color: labelColor,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-              );
-            }),
-          ),
-        ),
+              ),
+            ),
+          );
+        }),
       ),
+    );
+
+    return ClipRect(
+      child: blurSigma == 0
+          ? navContent
+          : BackdropFilter(
+              filter: ImageFilter.blur(
+                sigmaX: blurSigma,
+                sigmaY: blurSigma,
+              ),
+              child: navContent,
+            ),
     );
   }
 }
