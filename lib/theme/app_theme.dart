@@ -22,6 +22,15 @@ class AppColors {
   static const error = Color(0xffC53030);
   static const info = brandTeal500;
 
+  static const loginSurfaceDark = Color(0xff1E293B);
+  static const loginBorderLight = Color(0xffE2E8F0);
+  static const loginBorderDark = Color(0xff334155);
+  static const loginTextDark = Color(0xff0F172A);
+  static const loginTextMutedLight = Color(0xff64748B);
+  static const loginHelpLight = Color(0xff3B82F6);
+  static const loginHelpDark = Color(0xff60A5FA);
+  static const loginError = Color(0xffEF4444);
+
   static const darkBg = Color(0xff0E141B);
   static const darkSurface = Color(0xff141B24);
   static const darkSurfaceAlt = Color(0xff182132);

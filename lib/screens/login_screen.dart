@@ -1,23 +1,26 @@
 import 'package:flutter/material.dart';
 import '../animations/transitions.dart';
 import '../models/user.dart';
+import '../preferences_controller.dart';
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
+import '../services/observability_service.dart';
+import '../services/security_service.dart';
 import '../theme/app_theme.dart';
 import 'main_shell.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-const _primary = Color(0xff539091);
-const _surfaceLight = Color(0xffFFFFFF);
-const _surfaceDark = Color(0xff1E293B);
-const _borderLight = Color(0xffE2E8F0);
-const _borderDark = Color(0xff334155);
-const _textDark = Color(0xff0F172A);
-const _textMutedLight = Color(0xff64748B);
-const _textMutedDark = Color(0xff94A3B8);
-const _helpLight = Color(0xff3B82F6);
-const _helpDark = Color(0xff60A5FA);
-const _error = Color(0xffEF4444);
+const _primary = AppColors.brandBlue600;
+const _surfaceLight = AppColors.surface;
+const _surfaceDark = AppColors.loginSurfaceDark;
+const _borderLight = AppColors.loginBorderLight;
+const _borderDark = AppColors.loginBorderDark;
+const _textDark = AppColors.loginTextDark;
+const _textMutedLight = AppColors.loginTextMutedLight;
+const _textMutedDark = AppColors.darkTextMuted;
+const _helpLight = AppColors.loginHelpLight;
+const _helpDark = AppColors.loginHelpDark;
+const _error = AppColors.loginError;
 const _logoAsset = 'lib/assets/vecinus iso-01.png';
 const _contentMaxWidth = 448.0;
 const _inputRadius = 12.0;
@@ -25,6 +28,8 @@ const _supportEmail = '';
 const _supportPhone = '';
 const _supportWhatsApp = '';
 const _supportUrl = '';
+
+enum _QuickAccessAction { biometrics, pin, skip }
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -85,12 +90,16 @@ class _LoginScreenState extends State<LoginScreen> {
       final token = data['token'];
       final userJson = data['usuario'];
       final user = User.fromJson(userJson);
-      final sessionExpiration = _extractSessionExpiration(data) ??
-          user.sessionExpiresAt ??
-          DateTime.now().add(const Duration(hours: 2));
+      final sessionExpiration = AuthService.resolveSessionExpiration(
+        payload: data,
+        userExpiration: user.sessionExpiresAt,
+      );
       final sessionUser = user.copyWith(sessionExpiresAt: sessionExpiration);
 
       await AuthService.saveSession(token, sessionUser.toJson());
+      await preferencesController.loadForUser(sessionUser.id);
+      await _maybePromptQuickAccess(sessionUser);
+      ObservabilityService.logEvent('login_success');
 
       if (mounted) {
         Navigator.pushReplacement(
@@ -139,19 +148,6 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  DateTime? _extractSessionExpiration(Map<String, dynamic> data) {
-    final raw =
-        data['expires_at'] ?? data['token_expires_at'] ?? data['session_expires_at'];
-    if (raw is String && raw.isNotEmpty) {
-      return DateTime.tryParse(raw);
-    }
-    if (raw is int) {
-      final isMillis = raw > 2000000000;
-      return DateTime.fromMillisecondsSinceEpoch(isMillis ? raw : raw * 1000);
-    }
-    return null;
-  }
-
   bool _validateFields() {
     final email = emailController.text.trim();
     final password = passwordController.text;
@@ -184,6 +180,140 @@ class _LoginScreenState extends State<LoginScreen> {
       error = null;
     });
     return false;
+  }
+
+  Future<void> _maybePromptQuickAccess(User user) async {
+    if (!mounted) return;
+    final security = preferencesController.preferences.value.security;
+    if (security.biometricForLogin || security.pinForLogin) {
+      await SecurityService.markQuickAccessPrompted(user.id);
+      return;
+    }
+
+    final shouldPrompt =
+        await SecurityService.shouldShowQuickAccessPrompt(user.id);
+    if (!shouldPrompt || !mounted) return;
+
+    final canBiometrics = await SecurityService.canUseBiometrics();
+    if (!mounted) return;
+
+    final action = await _showQuickAccessSheet(canBiometrics: canBiometrics);
+    if (!mounted) return;
+
+    switch (action) {
+      case _QuickAccessAction.biometrics:
+        if (canBiometrics) {
+          final ok = await SecurityService.authenticateBiometric(
+            reason: 'Activa el acceso rapido con biometria.',
+          );
+          if (ok) {
+            preferencesController.updateWith(
+              (prefs) => prefs.copyWith(
+                security: prefs.security.copyWith(biometricForLogin: true),
+              ),
+            );
+          }
+        }
+        break;
+      case _QuickAccessAction.pin:
+        final ok = await SecurityService.setPin(context);
+        if (ok) {
+          preferencesController.updateWith(
+            (prefs) => prefs.copyWith(
+              security: prefs.security.copyWith(pinForLogin: true),
+            ),
+          );
+        }
+        break;
+      case _QuickAccessAction.skip:
+      case null:
+        break;
+    }
+
+    await SecurityService.markQuickAccessPrompted(user.id);
+  }
+
+  Future<_QuickAccessAction?> _showQuickAccessSheet({
+    required bool canBiometrics,
+  }) {
+    final theme = Theme.of(context);
+    final muted = theme.textTheme.bodySmall?.color?.withValues(alpha: 0.7) ??
+        AppColors.textMuted;
+    return showModalBottomSheet<_QuickAccessAction>(
+      context: context,
+      backgroundColor: theme.cardColor,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (sheetContext) {
+        return SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: muted.withValues(alpha: 0.35),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'Acceso rapido',
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'Entra mas rapido con huella, Face ID o un PIN.',
+                  style: theme.textTheme.bodySmall?.copyWith(color: muted),
+                ),
+                const SizedBox(height: 12),
+                if (canBiometrics)
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.fingerprint),
+                    title: const Text('Usar huella o Face ID'),
+                    subtitle: Text(
+                      'Autentica con biometria en tu proximo acceso.',
+                      style: TextStyle(fontSize: 12, color: muted),
+                    ),
+                    onTap: () => Navigator.of(sheetContext)
+                        .pop(_QuickAccessAction.biometrics),
+                  ),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(IconsRounded.pin),
+                  title: const Text('Configurar PIN'),
+                  subtitle: Text(
+                    'Accede con un PIN de 4 digitos.',
+                    style: TextStyle(fontSize: 12, color: muted),
+                  ),
+                  onTap: () =>
+                      Navigator.of(sheetContext).pop(_QuickAccessAction.pin),
+                ),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton(
+                    onPressed: () =>
+                        Navigator.of(sheetContext).pop(_QuickAccessAction.skip),
+                    child: const Text('Ahora no'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   bool _isValidEmail(String value) {

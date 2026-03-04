@@ -2,11 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:local_auth/local_auth.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class SecurityService {
   static final LocalAuthentication _auth = LocalAuthentication();
   static const FlutterSecureStorage _storage = FlutterSecureStorage();
   static const String _pinKey = 'user_pin_code';
+  static const String _quickAccessPromptKey = 'quick_access_prompted_';
 
   static Future<bool> canUseBiometrics() async {
     try {
@@ -41,6 +43,16 @@ class SecurityService {
 
   static Future<void> clearPin() async {
     await _storage.delete(key: _pinKey);
+  }
+
+  static Future<bool> shouldShowQuickAccessPrompt(String userId) async {
+    final prefs = await SharedPreferences.getInstance();
+    return !(prefs.getBool('$_quickAccessPromptKey$userId') ?? false);
+  }
+
+  static Future<void> markQuickAccessPrompted(String userId) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('$_quickAccessPromptKey$userId', true);
   }
 
   static Future<bool> setPin(BuildContext context) async {

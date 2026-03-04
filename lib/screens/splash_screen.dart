@@ -3,8 +3,8 @@ import 'package:flutter/material.dart';
 import '../animations/transitions.dart';
 import '../models/user.dart';
 import '../services/auth_service.dart';
-import '../services/security_service.dart';
 import '../preferences_controller.dart';
+import 'unlock_screen.dart';
 import 'login_screen.dart';
 import 'main_shell.dart';
 import '../theme/app_theme.dart';
@@ -83,9 +83,14 @@ class _SplashScreenState extends State<SplashScreen>
     if (!mounted) return;
 
     if (token != null && token.trim().isNotEmpty && userMap != null) {
-      final user = User.fromJson(userMap);
-      if (user.sessionExpiresAt != null &&
-          DateTime.now().isAfter(user.sessionExpiresAt!)) {
+      var hasValidSession = await AuthService.isLoggedIn();
+      if (!hasValidSession) {
+        final refreshed = await AuthService.tryRefreshSession();
+        if (refreshed) {
+          hasValidSession = await AuthService.isLoggedIn();
+        }
+      }
+      if (!hasValidSession) {
         await AuthService.logout();
         if (!mounted) return;
         Navigator.pushReplacement(
@@ -94,21 +99,21 @@ class _SplashScreenState extends State<SplashScreen>
         );
         return;
       }
+      final user = User.fromJson(userMap);
 
       await preferencesController.loadForUser(user.id);
       if (!mounted) return;
       final security = preferencesController.preferences.value.security;
-      final allowed = await SecurityService.requireAuthentication(
-        context: context,
-        useBiometrics: security.biometricForLogin,
-        usePin: security.pinForLogin,
-        reason: 'Confirma tu identidad para continuar.',
-      );
-      if (!mounted) return;
-      if (!allowed) {
+      if (security.biometricForLogin || security.pinForLogin) {
         Navigator.pushReplacement(
           context,
-          fadeSlideRoute(const LoginScreen()),
+          fadeSlideRoute(
+            UnlockScreen(
+              user: user,
+              token: token,
+              security: security,
+            ),
+          ),
         );
         return;
       }
@@ -230,6 +235,9 @@ class _SplashScreenState extends State<SplashScreen>
                     children: [
                       Text(
                         'PREPARANDO TU ESPACIO...',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        textAlign: TextAlign.center,
                         style: TextStyle(
                           color: muted.withValues(alpha: 0.85),
                           fontSize: 11,
@@ -297,14 +305,18 @@ class _SplashScreenState extends State<SplashScreen>
                             color: AppColors.brandBlue600.withValues(alpha: 0.6),
                           ),
                           const SizedBox(width: 8),
-                          Text(
-                            'SMART GUARDIAN ACTIVE',
-                            style: TextStyle(
-                              color:
-                                  AppColors.brandBlue600.withValues(alpha: 0.6),
-                              fontSize: 11,
-                              fontWeight: FontWeight.w700,
-                              letterSpacing: 0.8,
+                          Flexible(
+                            child: Text(
+                              'SMART GUARDIAN ACTIVE',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color:
+                                    AppColors.brandBlue600.withValues(alpha: 0.6),
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: 0.8,
+                              ),
                             ),
                           ),
                         ],

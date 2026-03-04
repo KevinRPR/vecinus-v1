@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'token_refresher.dart';
+
 class AuthService {
   static const String _tokenKey = "auth_token";
   static const String _userKey = "auth_user";
@@ -11,6 +13,7 @@ class AuthService {
   static const String _cacheFetchKey = 'cache_inmuebles_fetched_at';
   static const FlutterSecureStorage _secure = FlutterSecureStorage();
   static bool _migratedLegacy = false;
+  static const String _defaultSessionMinutesEnv = 'DEFAULT_SESSION_MINUTES';
 
   /// Guarda token y datos de usuario
   static Future<void> saveSession(String token, Map<String, dynamic> user) async {
@@ -18,16 +21,11 @@ class AuthService {
     await _secure.write(key: _userKey, value: jsonEncode(user));
 
     final expiresAt = user['session_expires_at'];
-    if (expiresAt is String && expiresAt.isNotEmpty) {
-      await _secure.write(key: _expiryKey, value: expiresAt);
-    } else if (expiresAt is DateTime) {
-      await _secure.write(
-        key: _expiryKey,
-        value: expiresAt.toIso8601String(),
-      );
-    } else {
-      await _secure.delete(key: _expiryKey);
-    }
+    final resolved = _parseExpiration(expiresAt) ?? _fallbackExpiration();
+    await _secure.write(
+      key: _expiryKey,
+      value: resolved.toIso8601String(),
+    );
 
     await _clearLegacySession();
   }
@@ -67,11 +65,72 @@ class AuthService {
     return DateTime.now().isBefore(expiration);
   }
 
+  static DateTime resolveSessionExpiration({
+    required Map<String, dynamic> payload,
+    DateTime? userExpiration,
+  }) {
+    final raw =
+        payload['expires_at'] ?? payload['token_expires_at'] ?? payload['session_expires_at'];
+    return _parseExpiration(raw) ?? userExpiration ?? _fallbackExpiration();
+  }
+
+  static Future<bool> tryRefreshSession() async {
+    final token = await getToken();
+    if (token == null || token.isEmpty) return false;
+    final result = await TokenRefresher.instance.tryRefresh(token);
+    if (!result.refreshed) return false;
+    if (result.token != null && result.token!.isNotEmpty) {
+      await _secure.write(key: _tokenKey, value: result.token);
+    }
+    if (result.expiresAt != null) {
+      await _secure.write(
+        key: _expiryKey,
+        value: result.expiresAt!.toIso8601String(),
+      );
+    }
+    return true;
+  }
+
   static Future<DateTime?> _getExpiration() async {
     await _migrateLegacyIfNeeded();
     final raw = await _secure.read(key: _expiryKey);
-    if (raw == null || raw.isEmpty) return null;
+    if (raw == null || raw.isEmpty) {
+      final token = await _secure.read(key: _tokenKey);
+      if (token == null || token.isEmpty) return null;
+      final fallback = _fallbackExpiration();
+      await _secure.write(
+        key: _expiryKey,
+        value: fallback.toIso8601String(),
+      );
+      return fallback;
+    }
     return DateTime.tryParse(raw);
+  }
+
+  static DateTime? _parseExpiration(dynamic raw) {
+    if (raw is DateTime) return raw;
+    if (raw is String && raw.isNotEmpty) return DateTime.tryParse(raw);
+    if (raw is int) {
+      final isMillis = raw > 2000000000;
+      return DateTime.fromMillisecondsSinceEpoch(isMillis ? raw : raw * 1000);
+    }
+    return null;
+  }
+
+  static DateTime _fallbackExpiration() {
+    return DateTime.now().add(_defaultSessionTtl());
+  }
+
+  static Duration _defaultSessionTtl() {
+    const raw = String.fromEnvironment(
+      _defaultSessionMinutesEnv,
+      defaultValue: '10080',
+    );
+    final minutes = int.tryParse(raw);
+    if (minutes == null || minutes <= 0) {
+      return const Duration(days: 7);
+    }
+    return Duration(minutes: minutes);
   }
 
   static Future<void> _migrateLegacyIfNeeded() async {
