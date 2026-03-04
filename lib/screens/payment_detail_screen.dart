@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
-
 import '../models/inmueble.dart';
 import '../models/pago.dart';
 import '../models/payment_report.dart';
@@ -12,6 +11,7 @@ import '../ui_system/components/app_status_chip.dart';
 import '../ui_system/formatters/money.dart';
 import '../ui_system/formatters/safe_text.dart';
 import 'inmueble_detail_screen.dart';
+import 'payment_history_screen.dart';
 import 'report_payment_screen.dart';
 
 typedef ReportesLoader = Future<List<PaymentReport>> Function({
@@ -118,9 +118,7 @@ class _PaymentDetailScreenState extends State<PaymentDetailScreen> {
             const SizedBox(height: 20),
             _contribucionSection(context, muted),
             const SizedBox(height: 20),
-            _respaldoSection(context),
-            const SizedBox(height: 20),
-            _trazabilidadSection(context, muted),
+            _reportesSection(context, muted),
           ],
         ),
       ),
@@ -154,7 +152,7 @@ class _PaymentDetailScreenState extends State<PaymentDetailScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'Tu contribucion compartida',
+          'Detalle de la deuda',
           style: theme.textTheme.titleSmall?.copyWith(
             fontWeight: FontWeight.w700,
           ),
@@ -257,131 +255,213 @@ class _PaymentDetailScreenState extends State<PaymentDetailScreen> {
     );
   }
 
-  Widget _respaldoSection(BuildContext context) {
+  Widget _reportesSection(BuildContext context, Color muted) {
     final theme = Theme.of(context);
-    final pago = _firstPagoWithDocument();
-    final hasDoc = pago != null;
+    final reportes = _reportesOrdenados;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'Respaldo',
-          style: theme.textTheme.titleSmall?.copyWith(
-            fontWeight: FontWeight.w700,
+        Row(
+          children: [
+            Text(
+              'Pagos reportados',
+              style: theme.textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const Spacer(),
+            if (reportes.isNotEmpty)
+              TextButton(
+                onPressed: () => _openHistorial(context),
+                child: const Text('Ver historial'),
+              ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        if (reportes.isEmpty)
+          Text('No hay pagos reportados.', style: TextStyle(color: muted))
+        else
+          Column(
+            children: [
+              for (int i = 0; i < reportes.length && i < 3; i++) ...[
+                _reporteItem(context, reportes[i], muted),
+                if (i != 2 && i != reportes.length - 1)
+                  const SizedBox(height: 10),
+              ],
+            ],
           ),
-        ),
-        const SizedBox(height: 8),
-        _respaldoLink(
-          context,
-          icon: IconsRounded.receipt_long,
-          label: 'Ver respaldo de gastos',
-          enabled: hasDoc,
-          onTap: hasDoc ? () => _openDocument(context, pago) : null,
-        ),
-        _respaldoLink(
-          context,
-          icon: IconsRounded.picture_as_pdf,
-          label: 'Descargar comprobante PDF',
-          enabled: hasDoc,
-          onTap: hasDoc ? () => _openDocument(context, pago) : null,
-        ),
       ],
     );
   }
 
-  Widget _respaldoLink(
-    BuildContext context, {
-    required IconData icon,
-    required String label,
-    required bool enabled,
-    VoidCallback? onTap,
-  }) {
+  Widget _reporteItem(
+    BuildContext context,
+    PaymentReport report,
+    Color muted,
+  ) {
     final theme = Theme.of(context);
-    return TextButton.icon(
-      onPressed: enabled ? onTap : null,
-      icon: Icon(icon, size: 18),
-      label: Text(label),
-      style: TextButton.styleFrom(
-        padding: const EdgeInsets.symmetric(vertical: 12),
-        minimumSize: const Size.fromHeight(44),
-        alignment: Alignment.centerLeft,
-        foregroundColor: enabled
-            ? AppColors.brandBlue600
-            : theme.colorScheme.onSurface.withValues(alpha: 0.4),
+    final monto = report.totalBase;
+    final fecha = _formatReportDate(report);
+    final status = _statusForReport(report);
+    final observacion = safeTextOrEmpty(report.observacion);
+    final motivo = safeTextOrEmpty(report.motivoRechazo);
+    final hasEvidence = report.evidenciaUrl != null && report.evidenciaUrl!.trim().isNotEmpty;
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: theme.cardColor,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: theme.colorScheme.outline),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            height: 36,
+            width: 36,
+            decoration: BoxDecoration(
+              color: AppColors.brandBlue600.withValues(alpha: 0.12),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(
+              IconsRounded.receipt_long,
+              color: AppColors.brandBlue600,
+              size: 18,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Pago reportado',
+                  style: TextStyle(fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  fecha,
+                  style: TextStyle(color: muted, fontSize: 12),
+                ),
+                const SizedBox(height: 6),
+                AppStatusChip(status: status, compact: true),
+                if (observacion.isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    observacion,
+                    style: TextStyle(color: muted, fontSize: 12),
+                  ),
+                ],
+                if (motivo.isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    motivo,
+                    style: TextStyle(
+                      color: theme.colorScheme.error,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+                if (hasEvidence) ...[
+                  const SizedBox(height: 8),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: TextButton.icon(
+                      onPressed: () => _openEvidence(context, report),
+                      icon: const Icon(IconsRounded.picture_as_pdf, size: 16),
+                      label: const Text('Ver comprobante'),
+                      style: TextButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        minimumSize: const Size(44, 36),
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            _formatCurrency(monto),
+            style: const TextStyle(
+              fontWeight: FontWeight.w700,
+              fontFeatures: [FontFeature.tabularFigures()],
+            ),
+          ),
+        ],
       ),
     );
   }
 
-  Widget _trazabilidadSection(BuildContext context, Color muted) {
-    final theme = Theme.of(context);
-    final step = _trazabilidadStep();
-    const items = [
-      _TraceItem('Emitido', IconsRounded.assignment_turned_in),
-      _TraceItem('Pagado', IconsRounded.payments),
-      _TraceItem('Confirmado', IconsRounded.verified),
-    ];
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Trazabilidad de aporte',
-          style: theme.textTheme.titleSmall?.copyWith(
-            fontWeight: FontWeight.w700,
-          ),
+  void _openHistorial(BuildContext context) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => PaymentHistoryScreen(
+          inmueble: widget.inmueble,
         ),
-        const SizedBox(height: 12),
-        Row(
-          children: List.generate(items.length, (index) {
-            final active = index <= step;
-            final color = active
-                ? AppColors.brandBlue600
-                : theme.colorScheme.onSurface.withValues(alpha: 0.35);
-            return Expanded(
-              child: Column(
-                children: [
-                  Container(
-                    height: 40,
-                    width: 40,
-                    decoration: BoxDecoration(
-                      color: color.withValues(alpha: 0.12),
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(items[index].icon, color: color, size: 20),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    items[index].label,
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      color: active ? color : muted,
-                    ),
-                  ),
-                ],
-              ),
-            );
-          }),
-        ),
-      ],
+      ),
     );
   }
 
-  int _trazabilidadStep() {
-    if (widget.totalDeuda <= 0) return 2;
-    if (_reportes.any((r) => r.estado == 'EN_PROCESO')) return 1;
-    return 0;
+  List<PaymentReport> get _reportesOrdenados {
+    final list = List<PaymentReport>.from(_reportes);
+    list.sort((a, b) => _parseReportDate(b).compareTo(_parseReportDate(a)));
+    return list;
   }
 
-  Pago? _firstPagoWithDocument() {
-    for (final pago in widget.inmueble.pagos) {
-      final url = _pickDocumentUrl(pago);
-      if (url != null && url.trim().isNotEmpty) {
-        return pago;
-      }
+  DateTime _parseReportDate(PaymentReport report) {
+    if (report.createdAt != null) return report.createdAt!;
+    return DateTime.tryParse(report.fechaPago) ?? DateTime.fromMillisecondsSinceEpoch(0);
+  }
+
+  String _formatReportDate(PaymentReport report) {
+    final raw = report.fechaPago.isNotEmpty ? report.fechaPago : null;
+    return _formatDateLabel(raw);
+  }
+
+  AppStatus _statusForReport(PaymentReport report) {
+    final estado = report.estado.toUpperCase();
+    if (estado.contains('EN_PROCESO') || estado.contains('PROCESO')) {
+      return AppStatus.enProceso;
     }
-    return null;
+    if (estado.contains('APROB') || estado.contains('CONFIRM')) {
+      return AppStatus.alDia;
+    }
+    if (estado.contains('RECH')) {
+      return AppStatus.atrasado;
+    }
+    return AppStatus.pendiente;
+  }
+
+  Future<void> _openEvidence(BuildContext context, PaymentReport report) async {
+    final url = report.evidenciaUrl;
+    if (url == null || url.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No hay comprobante disponible.')),
+      );
+      return;
+    }
+    final uri = Uri.parse(url.trim());
+    final openedExternal = await launchUrl(
+      uri,
+      mode: LaunchMode.externalApplication,
+    );
+    if (openedExternal) return;
+
+    final openedInApp = await launchUrl(
+      uri,
+      mode: LaunchMode.inAppBrowserView,
+    );
+    if (openedInApp) return;
+
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('No se pudo abrir el comprobante.')),
+    );
   }
 
   String _formatDateLabel(String? raw) {
@@ -608,63 +688,4 @@ class _PaymentDetailScreenState extends State<PaymentDetailScreen> {
     return DateTime(now.year, now.month, now.day);
   }
 
-  Future<void> _openDocument(BuildContext context, Pago pago) async {
-    final url = _pickDocumentUrl(pago);
-    if (url == null || url.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No hay documento disponible para este pago.')),
-      );
-      return;
-    }
-    final uri = Uri.parse(url);
-    final openedExternal = await launchUrl(
-      uri,
-      mode: LaunchMode.externalApplication,
-    );
-    if (openedExternal) return;
-
-    final openedInApp = await launchUrl(
-      uri,
-      mode: LaunchMode.inAppBrowserView,
-    );
-    if (openedInApp) return;
-
-    if (!context.mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('No se pudo abrir el documento.')),
-    );
-  }
-
-  String? _pickDocumentUrl(Pago pago) {
-    if (pago.documentoUrl != null && pago.documentoUrl!.trim().isNotEmpty) {
-      return pago.documentoUrl!.trim();
-    }
-    if (pago.reciboUrl != null && pago.reciboUrl!.trim().isNotEmpty) {
-      return pago.reciboUrl!.trim();
-    }
-    if (pago.notificacionUrl != null &&
-        pago.notificacionUrl!.trim().isNotEmpty) {
-      return pago.notificacionUrl!.trim();
-    }
-    if (pago.token != null && pago.token!.trim().isNotEmpty) {
-      final base = ApiService.baseRoot.endsWith('/')
-          ? ApiService.baseRoot
-          : '${ApiService.baseRoot}/';
-      return '${base}sys/generar_notificacion.php?token=${pago.token}';
-    }
-    if (pago.id.isNotEmpty) {
-      final base = ApiService.baseRoot.endsWith('/')
-          ? ApiService.baseRoot
-          : '${ApiService.baseRoot}/';
-      return '${base}sys/generar_notificacion.php?id_notificacion=${pago.id}';
-    }
-    return null;
-  }
-}
-
-class _TraceItem {
-  final String label;
-  final IconData icon;
-
-  const _TraceItem(this.label, this.icon);
 }

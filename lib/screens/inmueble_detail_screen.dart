@@ -3,10 +3,8 @@ import 'package:flutter/material.dart';
 import '../models/inmueble.dart';
 import '../theme/app_theme.dart';
 import '../ui_system/components/app_kv_row.dart';
-import '../ui_system/components/app_status_chip.dart';
 import '../ui_system/formatters/percent.dart';
 import '../ui_system/formatters/safe_text.dart';
-import 'payment_detail_screen.dart';
 
 class InmuebleDetailScreen extends StatelessWidget {
   final Inmueble inmueble;
@@ -21,7 +19,6 @@ class InmuebleDetailScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final status = _statusForInmueble(inmueble);
 
     return Scaffold(
       appBar: AppBar(
@@ -36,19 +33,17 @@ class InmuebleDetailScreen extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
         children: [
-          _headerCard(context, status),
-          const SizedBox(height: 16),
-          _accionesSection(context),
-          const SizedBox(height: 20),
-          _documentosSection(context),
+          _headerCard(context),
           const SizedBox(height: 20),
           _detallesSection(context),
+          const SizedBox(height: 20),
+          _documentosSection(context),
         ],
       ),
     );
   }
 
-  Widget _headerCard(BuildContext context, AppStatus status) {
+  Widget _headerCard(BuildContext context) {
     final theme = Theme.of(context);
     return Column(
       children: [
@@ -81,61 +76,7 @@ class InmuebleDetailScreen extends StatelessWidget {
           ),
           textAlign: TextAlign.center,
         ),
-        const SizedBox(height: 8),
-        AppStatusChip(status: status),
       ],
-    );
-  }
-
-  Widget _accionesSection(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-    final muted =
-        theme.textTheme.bodySmall?.color?.withValues(alpha: 0.7) ?? AppColors.textMuted;
-    final hasToken = token != null && token!.trim().isNotEmpty;
-
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: theme.cardColor,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: theme.colorScheme.outline),
-        boxShadow: [
-          if (!isDark)
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.06),
-              blurRadius: 14,
-              offset: const Offset(0, 8),
-            ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Estado de cuenta y pagos',
-            style: theme.textTheme.titleSmall?.copyWith(
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            hasToken
-                ? 'Consulta saldos, reportes e historial desde la pantalla de pagos.'
-                : 'Inicia sesion para consultar el estado de cuenta.',
-            style: TextStyle(color: muted),
-          ),
-          const SizedBox(height: 14),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton.icon(
-              onPressed: hasToken ? () => _openPaymentDetail(context) : null,
-              icon: const Icon(IconsRounded.payments),
-              label: const Text('Ver estado de cuenta'),
-            ),
-          ),
-        ],
-      ),
     );
   }
 
@@ -233,6 +174,29 @@ class InmuebleDetailScreen extends StatelessWidget {
 
   Widget _detallesSection(BuildContext context) {
     final theme = Theme.of(context);
+    final entries = <MapEntry<String, String>>[
+      MapEntry('Direccion', _direccion(inmueble)),
+      MapEntry('Tipo', safeTextOrEmpty(inmueble.tipo)),
+      MapEntry('Torre', safeTextOrEmpty(inmueble.torre)),
+      MapEntry('Piso', safeTextOrEmpty(inmueble.piso)),
+      MapEntry('Manzana', safeTextOrEmpty(inmueble.manzana)),
+      MapEntry('Avenida', safeTextOrEmpty(inmueble.avenida)),
+      MapEntry('Correlativo', safeTextOrEmpty(inmueble.correlativo)),
+      MapEntry('Alicuota', _formatAlicuota(inmueble.alicuota)),
+      MapEntry('ID inmueble', safeText(inmueble.idInmueble)),
+      MapEntry('ID condominio', safeText(inmueble.idCondominio)),
+    ];
+    final filtered = entries.where((entry) {
+      final value = entry.value.trim();
+      if (value.isEmpty) return false;
+      if (value == 'No disponible' &&
+          entry.key != 'Direccion' &&
+          entry.key != 'Alicuota') {
+        return false;
+      }
+      return true;
+    }).toList();
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -252,58 +216,22 @@ class InmuebleDetailScreen extends StatelessWidget {
           ),
           child: Column(
             children: [
-              AppKvRow(label: 'Direccion', value: _direccion(inmueble)),
-              const SizedBox(height: 8),
-              Divider(color: theme.colorScheme.outline),
-              const SizedBox(height: 8),
-              AppKvRow(
-                label: 'Alicuota',
-                value: _formatAlicuota(inmueble.alicuota),
-              ),
-              const SizedBox(height: 8),
-              Divider(color: theme.colorScheme.outline),
-              const SizedBox(height: 8),
-              AppKvRow(
-                label: 'ID inmueble',
-                value: safeText(inmueble.idInmueble),
-              ),
+              for (int i = 0; i < filtered.length; i++) ...[
+                AppKvRow(
+                  label: filtered[i].key,
+                  value: filtered[i].value,
+                ),
+                if (i != filtered.length - 1) ...[
+                  const SizedBox(height: 8),
+                  Divider(color: theme.colorScheme.outline),
+                  const SizedBox(height: 8),
+                ],
+              ],
             ],
           ),
         ),
       ],
     );
-  }
-
-  void _openPaymentDetail(BuildContext context) {
-    final value = token;
-    if (value == null || value.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Inicia sesion para ver el detalle.')),
-      );
-      return;
-    }
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => PaymentDetailScreen(
-          inmueble: inmueble,
-          token: value,
-          totalDeuda: _parseMonto(inmueble.deudaActual),
-        ),
-      ),
-    );
-  }
-
-  AppStatus _statusForInmueble(Inmueble inmueble) {
-    switch (inmueble.estado) {
-      case EstadoInmueble.alDia:
-        return AppStatus.alDia;
-      case EstadoInmueble.moroso:
-        return AppStatus.atrasado;
-      case EstadoInmueble.pendiente:
-        return AppStatus.pendiente;
-      case EstadoInmueble.desconocido:
-        return AppStatus.pendiente;
-    }
   }
 
   String _condominioLabel() {
@@ -346,10 +274,4 @@ class InmuebleDetailScreen extends StatelessWidget {
     return formatPercent(value, includeSymbol: false);
   }
 
-  double _parseMonto(String? raw) {
-    if (raw == null || raw.trim().isEmpty) return 0;
-    final sanitized =
-        raw.replaceAll(RegExp(r'[^0-9.,-]'), '').replaceAll(',', '.');
-    return double.tryParse(sanitized) ?? 0;
-  }
 }
