@@ -154,180 +154,200 @@ class _SplashScreenState extends State<SplashScreen>
     return Scaffold(
       backgroundColor: background,
       body: SafeArea(
-        child: Column(
-          children: [
-            const SizedBox(height: 24),
-            Expanded(
-              child: Center(
-                child: FadeTransition(
-                  opacity: _contentOpacity,
-                  child: SlideTransition(
-                    position: _contentOffset,
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        AnimatedBuilder(
-                          animation: _floatAnimation,
-                          builder: (context, child) {
-                            return Transform.translate(
-                              offset: Offset(0, _floatAnimation.value),
-                              child: child,
-                            );
-                          },
-                          child: SizedBox(
-                            width: 128,
-                            height: 128,
-                            child: Center(
-                              child: Image.asset(
-                                _logoAsset,
-                                height: 92,
-                                width: 92,
-                                fit: BoxFit.contain,
-                                filterQuality: FilterQuality.high,
-                                errorBuilder: (context, error, stackTrace) {
-                                  return Icon(
-                                    IconsRounded.home_work,
-                                    size: 72,
-                                    color: titleColor,
-                                  );
-                                },
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            return SingleChildScrollView(
+              physics: const ClampingScrollPhysics(),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                child: IntrinsicHeight(
+                  child: Column(
+                    children: [
+                      const SizedBox(height: 24),
+                      Expanded(
+                        child: Center(
+                          child: FadeTransition(
+                            opacity: _contentOpacity,
+                            child: SlideTransition(
+                              position: _contentOffset,
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  AnimatedBuilder(
+                                    animation: _floatAnimation,
+                                    builder: (context, child) {
+                                      return Transform.translate(
+                                        offset: Offset(0, _floatAnimation.value),
+                                        child: child,
+                                      );
+                                    },
+                                    child: SizedBox(
+                                      width: 128,
+                                      height: 128,
+                                      child: Center(
+                                        child: Image.asset(
+                                          _logoAsset,
+                                          height: 92,
+                                          width: 92,
+                                          fit: BoxFit.contain,
+                                          filterQuality: FilterQuality.high,
+                                          errorBuilder: (context, error, stackTrace) {
+                                            return Icon(
+                                              IconsRounded.home_work,
+                                              size: 72,
+                                              color: titleColor,
+                                            );
+                                          },
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 20),
+                                  Text(
+                                    'vecinus',
+                                    style: TextStyle(
+                                      color: titleColor,
+                                      fontSize: 32,
+                                      fontWeight: FontWeight.w800,
+                                      letterSpacing: -0.6,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 10),
+                                  Padding(
+                                    padding:
+                                        const EdgeInsets.symmetric(horizontal: 24),
+                                    child: Text(
+                                      'Tu condominio, claro y en orden.',
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(
+                                        color: muted,
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w600,
+                                        height: 1.5,
+                                      ),
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
                           ),
                         ),
-                        const SizedBox(height: 20),
-                        Text(
-                          'vecinus',
-                          style: TextStyle(
-                            color: titleColor,
-                            fontSize: 32,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: -0.6,
-                          ),
-                        ),
-                        const SizedBox(height: 10),
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 24),
-                          child: Text(
-                            'Tu condominio, claro y en orden.',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              color: muted,
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
-                              height: 1.5,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 32),
-              child: FadeTransition(
-                opacity: _bottomOpacity,
-                child: SlideTransition(
-                  position: _bottomOffset,
-                  child: Column(
-                    children: [
-                      Text(
-                        'PREPARANDO TU ESPACIO...',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          color: muted.withValues(alpha: 0.85),
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: 2.2,
-                        ),
                       ),
-                      const SizedBox(height: 12),
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(999),
-                        child: SizedBox(
-                          height: 6,
-                          child: Stack(
-                            fit: StackFit.expand,
-                            children: [
-                              Container(color: progressTrack),
-                              FractionallySizedBox(
-                                alignment: Alignment.centerLeft,
-                                widthFactor: 0.65,
-                                child: Stack(
-                                  fit: StackFit.expand,
-                                  children: [
-                                    Container(color: AppColors.brandBlue600),
-                                    AnimatedBuilder(
-                                      animation: _shimmerController,
-                                      builder: (context, child) {
-                                        final shimmer =
-                                            _shimmerController.value;
-                                        return DecoratedBox(
-                                          decoration: BoxDecoration(
-                                            gradient: LinearGradient(
-                                              colors: [
-                                                Colors.white.withValues(alpha: 0),
-                                                Colors.white.withValues(alpha: 0.45),
-                                                Colors.white.withValues(alpha: 0),
-                                              ],
-                                              stops: const [0, 0.5, 1],
-                                              begin: Alignment(
-                                                -1 + (2 * shimmer),
-                                                0,
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 32),
+                        child: FadeTransition(
+                          opacity: _bottomOpacity,
+                          child: SlideTransition(
+                            position: _bottomOffset,
+                            child: Column(
+                              children: [
+                                Text(
+                                  'PREPARANDO TU ESPACIO...',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    color: muted.withValues(alpha: 0.85),
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w700,
+                                    letterSpacing: 2.2,
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+                                ClipRRect(
+                                  borderRadius: BorderRadius.circular(999),
+                                  child: SizedBox(
+                                    height: 6,
+                                    child: Stack(
+                                      fit: StackFit.expand,
+                                      children: [
+                                        Container(color: progressTrack),
+                                        FractionallySizedBox(
+                                          alignment: Alignment.centerLeft,
+                                          widthFactor: 0.65,
+                                          child: Stack(
+                                            fit: StackFit.expand,
+                                            children: [
+                                              Container(
+                                                color: AppColors.brandBlue600,
                                               ),
-                                              end: Alignment(
-                                                1 + (2 * shimmer),
-                                                0,
+                                              AnimatedBuilder(
+                                                animation: _shimmerController,
+                                                builder: (context, child) {
+                                                  final shimmer =
+                                                      _shimmerController.value;
+                                                  return DecoratedBox(
+                                                    decoration: BoxDecoration(
+                                                      gradient: LinearGradient(
+                                                        colors: [
+                                                          Colors.white
+                                                              .withValues(alpha: 0),
+                                                          Colors.white.withValues(
+                                                            alpha: 0.45,
+                                                          ),
+                                                          Colors.white
+                                                              .withValues(alpha: 0),
+                                                        ],
+                                                        stops: const [0, 0.5, 1],
+                                                        begin: Alignment(
+                                                          -1 + (2 * shimmer),
+                                                          0,
+                                                        ),
+                                                        end: Alignment(
+                                                          1 + (2 * shimmer),
+                                                          0,
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  );
+                                                },
                                               ),
-                                            ),
+                                            ],
                                           ),
-                                        );
-                                      },
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(height: 16),
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(
+                                      IconsRounded.verified_user,
+                                      size: 18,
+                                      color:
+                                          AppColors.brandBlue600.withValues(alpha: 0.6),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Flexible(
+                                      child: Text(
+                                        'SMART GUARDIAN ACTIVE',
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          color: AppColors.brandBlue600
+                                              .withValues(alpha: 0.6),
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w700,
+                                          letterSpacing: 0.8,
+                                        ),
+                                      ),
                                     ),
                                   ],
                                 ),
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
                         ),
                       ),
-                      const SizedBox(height: 16),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            IconsRounded.verified_user,
-                            size: 18,
-                            color: AppColors.brandBlue600.withValues(alpha: 0.6),
-                          ),
-                          const SizedBox(width: 8),
-                          Flexible(
-                            child: Text(
-                              'SMART GUARDIAN ACTIVE',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                color:
-                                    AppColors.brandBlue600.withValues(alpha: 0.6),
-                                fontSize: 11,
-                                fontWeight: FontWeight.w700,
-                                letterSpacing: 0.8,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
+                      const SizedBox(height: 32),
                     ],
                   ),
                 ),
               ),
-            ),
-            const SizedBox(height: 32),
-          ],
+            );
+          },
         ),
       ),
     );

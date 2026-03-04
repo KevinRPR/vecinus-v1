@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:local_auth/local_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../ui_system/components/pin_pad.dart';
 class SecurityService {
   static final LocalAuthentication _auth = LocalAuthentication();
   static const FlutterSecureStorage _storage = FlutterSecureStorage();
@@ -41,6 +41,12 @@ class SecurityService {
     return stored != null && stored.isNotEmpty;
   }
 
+  static Future<bool> isPinValid(String pin) async {
+    final stored = await _storage.read(key: _pinKey);
+    if (stored == null || stored.isEmpty) return false;
+    return stored == pin;
+  }
+
   static Future<void> clearPin() async {
     await _storage.delete(key: _pinKey);
   }
@@ -56,8 +62,7 @@ class SecurityService {
   }
 
   static Future<bool> setPin(BuildContext context) async {
-    final controller = TextEditingController();
-    final confirmController = TextEditingController();
+    String? pendingPin;
     final result = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
@@ -66,17 +71,31 @@ class SecurityService {
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       builder: (sheetContext) {
-        final bottomInset = MediaQuery.of(sheetContext).viewInsets.bottom;
+        final theme = Theme.of(sheetContext);
         final muted =
-            Theme.of(sheetContext).textTheme.bodySmall?.color?.withValues(alpha: 0.7) ??
-                Colors.grey;
+            theme.textTheme.bodySmall?.color?.withValues(alpha: 0.7) ?? Colors.grey;
+        var step = 0;
+        var firstPin = '';
+        var resetToken = 0;
         String? error;
         return StatefulBuilder(
           builder: (context, setModalState) {
+            void clearError() {
+              if (error == null) return;
+              setModalState(() => error = null);
+            }
+
+            void resetWithError(String message) {
+              setModalState(() {
+                error = message;
+                resetToken += 1;
+              });
+            }
+
             return SafeArea(
               top: false,
               child: Padding(
-                padding: EdgeInsets.fromLTRB(20, 12, 20, 20 + bottomInset),
+                padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -93,70 +112,60 @@ class SecurityService {
                     ),
                     const SizedBox(height: 12),
                     Text(
-                      'Configurar PIN',
+                      step == 0 ? 'Configurar PIN' : 'Confirmar PIN',
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w700,
-                        color: Theme.of(sheetContext).colorScheme.onSurface,
+                        color: theme.colorScheme.onSurface,
                       ),
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      'Crea un PIN de 4 digitos para acceder rapido.',
+                      step == 0
+                          ? 'Crea un PIN de 4 digitos para acceder rapido.'
+                          : 'Repite tu PIN para confirmar.',
                       style: TextStyle(fontSize: 12, color: muted),
                     ),
                     const SizedBox(height: 16),
-                    TextField(
-                      controller: controller,
-                      keyboardType: TextInputType.number,
-                      obscureText: true,
-                      maxLength: 4,
-                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                      decoration: const InputDecoration(
-                        labelText: 'PIN',
-                        counterText: '',
-                      ),
+                    PinPad(
+                      length: 4,
+                      resetToken: resetToken,
+                      errorText: error,
+                      onChanged: (_) => clearError(),
+                      onCompleted: (pin) {
+                        if (step == 0) {
+                          firstPin = pin;
+                          setModalState(() {
+                            step = 1;
+                            resetToken += 1;
+                            error = null;
+                          });
+                          return;
+                        }
+                        if (pin != firstPin) {
+                          resetWithError('La confirmacion no coincide.');
+                          return;
+                        }
+                        pendingPin = pin;
+                        Navigator.of(sheetContext).pop(true);
+                      },
                     ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: confirmController,
-                      keyboardType: TextInputType.number,
-                      obscureText: true,
-                      maxLength: 4,
-                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                      decoration: const InputDecoration(
-                        labelText: 'Confirmar PIN',
-                        counterText: '',
-                      ),
-                    ),
-                    if (error != null) ...[
-                      const SizedBox(height: 6),
-                      Text(error!, style: TextStyle(color: Colors.red.shade400)),
-                    ],
-                    const SizedBox(height: 16),
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton(
-                        onPressed: () {
-                          final pin = controller.text.trim();
-                          final confirm = confirmController.text.trim();
-                          if (pin.length != 4 || confirm.length != 4) {
+                    const SizedBox(height: 8),
+                    if (step == 1)
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: TextButton(
+                          onPressed: () {
                             setModalState(() {
-                              error = 'Ingresa un PIN de 4 digitos.';
+                              step = 0;
+                              firstPin = '';
+                              resetToken += 1;
+                              error = null;
                             });
-                            return;
-                          }
-                          if (pin != confirm) {
-                            setModalState(() {
-                              error = 'La confirmacion no coincide.';
-                            });
-                            return;
-                          }
-                          Navigator.of(sheetContext).pop(true);
-                        },
-                        child: const Text('Guardar PIN'),
+                          },
+                          child: const Text('Cambiar PIN'),
+                        ),
                       ),
-                    ),
                     Align(
                       alignment: Alignment.centerRight,
                       child: TextButton(
@@ -173,8 +182,8 @@ class SecurityService {
       },
     );
 
-    if (result != true) return false;
-    await _storage.write(key: _pinKey, value: controller.text.trim());
+    if (result != true || pendingPin == null) return false;
+    await _storage.write(key: _pinKey, value: pendingPin);
     return true;
   }
 
@@ -183,7 +192,6 @@ class SecurityService {
     if (stored == null || stored.isEmpty) return false;
     if (!context.mounted) return false;
 
-    final controller = TextEditingController();
     final result = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
@@ -192,17 +200,17 @@ class SecurityService {
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       builder: (sheetContext) {
-        final bottomInset = MediaQuery.of(sheetContext).viewInsets.bottom;
+        final theme = Theme.of(sheetContext);
         final muted =
-            Theme.of(sheetContext).textTheme.bodySmall?.color?.withValues(alpha: 0.7) ??
-                Colors.grey;
+            theme.textTheme.bodySmall?.color?.withValues(alpha: 0.7) ?? Colors.grey;
         String? error;
+        var resetToken = 0;
         return StatefulBuilder(
           builder: (context, setModalState) {
             return SafeArea(
               top: false,
               child: Padding(
-                padding: EdgeInsets.fromLTRB(20, 12, 20, 20 + bottomInset),
+                padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -223,7 +231,7 @@ class SecurityService {
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w700,
-                        color: Theme.of(sheetContext).colorScheme.onSurface,
+                        color: theme.colorScheme.onSurface,
                       ),
                     ),
                     const SizedBox(height: 6),
@@ -232,36 +240,24 @@ class SecurityService {
                       style: TextStyle(fontSize: 12, color: muted),
                     ),
                     const SizedBox(height: 16),
-                    TextField(
-                      controller: controller,
-                      keyboardType: TextInputType.number,
-                      obscureText: true,
-                      maxLength: 4,
-                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                      decoration: const InputDecoration(
-                        labelText: 'PIN',
-                        counterText: '',
-                      ),
-                    ),
-                    if (error != null) ...[
-                      const SizedBox(height: 6),
-                      Text(error!, style: TextStyle(color: Colors.red.shade400)),
-                    ],
-                    const SizedBox(height: 12),
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton(
-                        onPressed: () {
-                          if (controller.text.trim() != stored) {
-                            setModalState(() {
-                              error = 'PIN incorrecto.';
-                            });
-                            return;
-                          }
-                          Navigator.of(sheetContext).pop(true);
-                        },
-                        child: const Text('Confirmar'),
-                      ),
+                    PinPad(
+                      length: 4,
+                      resetToken: resetToken,
+                      errorText: error,
+                      onChanged: (_) {
+                        if (error == null) return;
+                        setModalState(() => error = null);
+                      },
+                      onCompleted: (pin) {
+                        if (pin != stored) {
+                          setModalState(() {
+                            error = 'PIN incorrecto.';
+                            resetToken += 1;
+                          });
+                          return;
+                        }
+                        Navigator.of(sheetContext).pop(true);
+                      },
                     ),
                     Align(
                       alignment: Alignment.centerRight,
