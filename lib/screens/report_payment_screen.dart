@@ -7,6 +7,7 @@ import 'package:image_picker/image_picker.dart';
 import '../models/inmueble.dart';
 import '../services/api_service.dart';
 import '../services/notification_service.dart';
+import '../services/observability_service.dart';
 import '../theme/app_theme.dart';
 import '../ui_system/components/app_icon_button.dart';
 import '../ui_system/formatters/money.dart';
@@ -323,6 +324,10 @@ class _ReportPaymentScreenState extends State<ReportPaymentScreen> {
 
     setState(() => _loading = true);
     try {
+      ObservabilityService.logEvent('payment_started', data: {
+        'inmueble_id': widget.inmueble.idInmueble,
+        'client_uuid': _clientUuid,
+      });
       final res = await ApiService.enviarPagoReporte(
         token: widget.token,
         inmuebleId: widget.inmueble.idInmueble,
@@ -339,11 +344,23 @@ class _ReportPaymentScreenState extends State<ReportPaymentScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Este pago ya fue reportado.')),
         );
+        ObservabilityService.logEvent('payment_failed', data: {
+          'reason': 'duplicado',
+          'inmueble_id': widget.inmueble.idInmueble,
+        });
         return;
       }
       await _goToSuccess();
+      ObservabilityService.logEvent('payment_success', data: {
+        'inmueble_id': widget.inmueble.idInmueble,
+        'client_uuid': _clientUuid,
+      });
     } catch (e) {
       if (!mounted) return;
+      ObservabilityService.logEvent('payment_failed', data: {
+        'reason': 'exception',
+        'inmueble_id': widget.inmueble.idInmueble,
+      });
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error al procesar: $e')),
       );

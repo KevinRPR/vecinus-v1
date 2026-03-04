@@ -13,18 +13,19 @@ dependencies:
   http: ^1.2.0
   shared_preferences: ^2.3.2
   image_picker: ^1.1.0
-  flutter_hooks: ^0.20.5
+  flutter_hooks: ^0.21.3+1
   provider: ^6.1.2
   cupertino_icons: ^1.0.8
   shimmer: ^3.0.0
   lottie: ^3.1.0
   flutter_staggered_animations: ^1.1.1
   animated_list_plus: ^0.5.0
-  rive: ^0.13.4
+  rive: ^0.13.20
   url_launcher: ^6.3.0
-  local_auth: ^2.2.0
-  flutter_secure_storage: ^9.2.2
-  intl: ^0.19.0
+  local_auth: ^2.3.0
+  flutter_secure_storage: ^9.2.4
+  intl: ^0.20.2
+  sentry_flutter: ^9.14.0
 
 dev_dependencies:
   flutter_test:
