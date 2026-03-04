@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'dart:math';
 import 'package:http/http.dart' as http;
 
@@ -16,7 +18,14 @@ class ApiAuthException implements Exception {
 }
 
 class ApiService {
-  static const String baseUrl = 'https://rhodiumdev.com/condominio/movil/';
+  static const String _defaultBaseUrl =
+      'https://rhodiumdev.com/condominio/movil/';
+  static final String baseUrl = _normalizeBaseUrl(
+    const String.fromEnvironment(
+      'API_BASE_URL',
+      defaultValue: _defaultBaseUrl,
+    ),
+  );
   static String get baseRoot =>
       baseUrl.replaceFirst(RegExp(r'movil/?$'), '');
 
@@ -24,6 +33,34 @@ class ApiService {
 
   static Map<String, String> get _headers =>
       const {'Content-Type': 'application/json'};
+  static const Duration _timeout = Duration(seconds: 15);
+  static const String _noConnectionMessage =
+      'No hay conexion, intenta de nuevo.';
+
+  static String _normalizeBaseUrl(String raw) {
+    final trimmed = raw.trim();
+    if (trimmed.isEmpty) return _defaultBaseUrl;
+    return trimmed.endsWith('/') ? trimmed : '$trimmed/';
+  }
+
+  static Future<http.Response> _postJson(
+    String path,
+    Map<String, dynamic> payload,
+  ) async {
+    try {
+      return await http
+          .post(
+            _uri(path),
+            headers: _headers,
+            body: jsonEncode(payload),
+          )
+          .timeout(_timeout);
+    } on TimeoutException {
+      throw Exception(_noConnectionMessage);
+    } on SocketException {
+      throw Exception(_noConnectionMessage);
+    }
+  }
 
   static String generateClientUuid() {
     final Random rnd = Random.secure();
@@ -36,10 +73,9 @@ class ApiService {
     String email,
     String password,
   ) async {
-    final response = await http.post(
-      _uri('login.php'),
-      headers: _headers,
-      body: jsonEncode({'email': email, 'password': password}),
+    final response = await _postJson(
+      'login.php',
+      {'email': email, 'password': password},
     );
 
     final data = _decodeResponse(response);
@@ -52,10 +88,9 @@ class ApiService {
   }
 
   static Future<List<Inmueble>> getMisInmuebles(String token) async {
-    final response = await http.post(
-      _uri('mis_inmuebles.php'),
-      headers: _headers,
-      body: jsonEncode({'token': token}),
+    final response = await _postJson(
+      'mis_inmuebles.php',
+      {'token': token},
     );
 
     final data = _decodeResponse(response);
@@ -113,14 +148,13 @@ class ApiService {
     required String token,
     required String base64Image,
   }) async {
-    final response = await http.post(
-      _uri('perfil_usuario.php'),
-      headers: _headers,
-      body: jsonEncode({
+    final response = await _postJson(
+      'perfil_usuario.php',
+      {
         'token': token,
         'accion': 'avatar',
         'avatar_base64': base64Image,
-      }),
+      },
     );
 
     final data = _decodeResponse(response);
@@ -135,14 +169,13 @@ class ApiService {
     required String token,
     required String inmuebleId,
   }) async {
-    final response = await http.post(
-      _uri('reportar_pago.php'),
-      headers: _headers,
-      body: jsonEncode({
+    final response = await _postJson(
+      'reportar_pago.php',
+      {
         'accion': 'preparar',
         'token': token,
         'id_inmueble': inmuebleId,
-      }),
+      },
     );
     final data = _decodeResponse(response);
     if (response.statusCode == 200 && data['success'] == true) {
@@ -166,10 +199,9 @@ class ApiService {
         ? clientUuid.trim()
         : generateClientUuid();
 
-    final response = await http.post(
-      _uri('reportar_pago.php'),
-      headers: _headers,
-      body: jsonEncode({
+    final response = await _postJson(
+      'reportar_pago.php',
+      {
         'accion': 'enviar',
         'token': token,
         'id_inmueble': inmuebleId,
@@ -180,7 +212,7 @@ class ApiService {
         'client_uuid': uuid,
         if (comprobanteBase64 != null) 'comprobante_base64': comprobanteBase64,
         if (comprobanteExt != null) 'comprobante_ext': comprobanteExt,
-      }),
+      },
     );
     final data = _decodeResponse(response);
     if (response.statusCode == 200 && data['success'] == true) {
@@ -197,11 +229,7 @@ class ApiService {
       'token': token,
       if (idInmueble != null) 'id_inmueble': idInmueble,
     };
-    final response = await http.post(
-      _uri('mis_pagos_reportados.php'),
-      headers: _headers,
-      body: jsonEncode(payload),
-    );
+    final response = await _postJson('mis_pagos_reportados.php', payload);
     final data = _decodeResponse(response);
     if (response.statusCode == 200 && data['success'] == true) {
       final List lista = data['reportes'] ?? [];
@@ -217,11 +245,7 @@ class ApiService {
     Map<String, dynamic> payload, {
     bool expectUser = true,
   }) async {
-    final response = await http.post(
-      _uri('perfil_usuario.php'),
-      headers: _headers,
-      body: jsonEncode(payload),
-    );
+    final response = await _postJson('perfil_usuario.php', payload);
     final data = _decodeResponse(response);
 
     if (response.statusCode == 200 && data['success'] == true) {
