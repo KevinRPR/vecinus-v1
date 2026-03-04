@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../animations/transitions.dart';
 import '../models/user.dart';
 import '../models/user_preferences.dart';
+import '../preferences_controller.dart';
 import '../services/auth_service.dart';
 import '../services/security_service.dart';
 import '../theme/app_theme.dart';
@@ -31,11 +32,25 @@ class _UnlockScreenState extends State<UnlockScreen> {
   String? _error;
   int _pinReset = 0;
   bool _autoBiometricAttempted = false;
+  bool _pinAvailable = true;
+  bool _checkingPin = false;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) => _maybeAutoBiometric());
+    _loadPinStatus();
+  }
+
+  Future<void> _loadPinStatus() async {
+    if (!widget.security.pinForLogin) return;
+    setState(() => _checkingPin = true);
+    final hasPin = await SecurityService.hasPin();
+    if (!mounted) return;
+    setState(() {
+      _pinAvailable = hasPin;
+      _checkingPin = false;
+    });
   }
 
   void _maybeAutoBiometric() {
@@ -81,7 +96,9 @@ class _UnlockScreenState extends State<UnlockScreen> {
       return;
     }
     setState(() {
-      _error = 'PIN incorrecto.';
+      _error = _pinAvailable
+          ? 'PIN incorrecto.'
+          : 'PIN no configurado. Ingresa con contrasena para configurarlo.';
       _pinReset += 1;
     });
   }
@@ -102,6 +119,26 @@ class _UnlockScreenState extends State<UnlockScreen> {
     );
   }
 
+  Future<void> _resetQuickAccess() async {
+    await SecurityService.clearPin();
+    preferencesController.updateWith(
+      (prefs) => prefs.copyWith(
+        security: prefs.security.copyWith(
+          biometricForLogin: false,
+          biometricForSensitive: false,
+          pinForLogin: false,
+          pinForSensitive: false,
+        ),
+      ),
+    );
+    await AuthService.logout();
+    if (!mounted) return;
+    Navigator.pushReplacement(
+      context,
+      fadeSlideRoute(const LoginScreen()),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -112,6 +149,7 @@ class _UnlockScreenState extends State<UnlockScreen> {
     final displayName = widget.user.displayName;
     final showPin = widget.security.pinForLogin;
     final showBiometric = widget.security.biometricForLogin;
+    final canShowPinPad = showPin && _pinAvailable && !_checkingPin;
 
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
@@ -168,8 +206,10 @@ class _UnlockScreenState extends State<UnlockScreen> {
                           ),
                         ),
                       ],
-                      const Spacer(),
-                      if (showPin) ...[
+                      const SizedBox(height: 20),
+                      if (_checkingPin)
+                        const Center(child: CircularProgressIndicator())
+                      else if (canShowPinPad) ...[
                         Text(
                           'Ingresa tu PIN',
                           textAlign: TextAlign.center,
@@ -191,6 +231,21 @@ class _UnlockScreenState extends State<UnlockScreen> {
                           },
                           onCompleted: _handlePinCompleted,
                         ),
+                      ] else if (showPin && !_pinAvailable) ...[
+                        Text(
+                          'PIN no configurado.',
+                          textAlign: TextAlign.center,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            fontWeight: FontWeight.w600,
+                            color: muted,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Entra con contrasena para volver a configurarlo.',
+                          textAlign: TextAlign.center,
+                          style: theme.textTheme.bodySmall?.copyWith(color: muted),
+                        ),
                       ] else if (showBiometric) ...[
                         ElevatedButton.icon(
                           onPressed: _loading ? null : _attemptBiometric,
@@ -208,6 +263,10 @@ class _UnlockScreenState extends State<UnlockScreen> {
                       TextButton(
                         onPressed: _loading ? null : _usePassword,
                         child: const Text('Usar contrasena'),
+                      ),
+                      TextButton(
+                        onPressed: _loading ? null : _resetQuickAccess,
+                        child: const Text('Restablecer acceso rapido'),
                       ),
                     ],
                   ),
