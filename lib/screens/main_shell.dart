@@ -22,8 +22,14 @@ import 'login_screen.dart';
 class MainShell extends StatefulWidget {
   final User user;
   final String token;
+  final bool fromQuickAccess;
 
-  const MainShell({super.key, required this.user, required this.token});
+  const MainShell({
+    super.key,
+    required this.user,
+    required this.token,
+    this.fromQuickAccess = false,
+  });
 
   @override
   State<MainShell> createState() => _MainShellState();
@@ -37,6 +43,7 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
   bool _loadingData = true;
   bool _refreshing = false;
   bool _handlingAuthError = false;
+  late String _token;
   DateTime? _lastFetch;
   static const double _floatingNavHeight = 72;
   static const bool _useCache = true;
@@ -49,7 +56,9 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _currentUser = widget.user;
+    _token = widget.token;
     _pageController = PageController();
+    _syncToken();
     if (_useCache) {
       _restoreCachedInmuebles().then((shouldFetch) {
         if (shouldFetch) {
@@ -82,7 +91,17 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
     _refreshing = true;
     setState(() => _loadingData = _inmuebles.isEmpty);
     try {
-      final data = await ApiService.getMisInmuebles(widget.token);
+      final storedToken = await AuthService.getToken();
+      if (!mounted) return;
+      if (storedToken == null || storedToken.isEmpty) {
+        setState(() => _loadingData = false);
+        await _handleAuthError();
+        return;
+      }
+      if (storedToken != _token) {
+        setState(() => _token = storedToken);
+      }
+      final data = await ApiService.getMisInmuebles(_token);
       if (!mounted) return;
       setState(() {
         _inmuebles = data;
@@ -99,12 +118,35 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
         await _handleAuthError();
         return;
       }
+      if (widget.fromQuickAccess &&
+          _inmuebles.isEmpty &&
+          !_isConnectionError(e)) {
+        final valid = await _validateSession();
+        if (!mounted) return;
+        if (!valid) {
+          setState(() => _loadingData = false);
+          await _handleAuthError();
+          return;
+        }
+      }
       setState(() => _loadingData = false);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('No se pudieron cargar los inmuebles: $e')),
       );
     } finally {
       _refreshing = false;
+    }
+  }
+
+  Future<void> _syncToken() async {
+    final stored = await AuthService.getToken();
+    if (!mounted) return;
+    if (stored == null || stored.isEmpty) {
+      await _handleAuthError();
+      return;
+    }
+    if (stored != _token) {
+      setState(() => _token = stored);
     }
   }
 
@@ -167,6 +209,24 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
     return message.contains('token') || message.contains('401');
   }
 
+  bool _isConnectionError(Object error) {
+    final message = error.toString().toLowerCase();
+    return message.contains('conexion') ||
+        message.contains('conexiÃ³n') ||
+        message.contains('timeout') ||
+        message.contains('socket');
+  }
+
+  Future<bool> _validateSession() async {
+    try {
+      await ApiService.fetchProfile(_token);
+      return true;
+    } catch (e) {
+      if (_isAuthError(e)) return false;
+      return true;
+    }
+  }
+
   Future<void> _handleAuthError() async {
     if (_handlingAuthError) return;
     _handlingAuthError = true;
@@ -221,13 +281,13 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
         inmuebles: _inmuebles,
         loading: _loadingData,
         onRefresh: _loadInmuebles,
-        token: widget.token,
+        token: _token,
         lastSync: _lastFetch,
       ),
-      NotificationsScreen(token: widget.token),
+      NotificationsScreen(token: _token),
       UserScreen(
         user: _currentUser,
-        token: widget.token,
+        token: _token,
         inmuebles: _inmuebles,
         embedded: true,
         onUserUpdated: _handleUserUpdated,

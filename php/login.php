@@ -84,7 +84,7 @@ try {
     rate_limit_clear($rateKey);
 
     $token = bin2hex(random_bytes(50));
-    $ttlMinutes = env_int('TOKEN_TTL_MINUTES', 120);
+    $ttlMinutes = env_int('TOKEN_TTL_MINUTES', 43200);
     $expiresAt = date('Y-m-d H:i:s', strtotime("+{$ttlMinutes} minutes"));
 
     $stmt = $conn->prepare("

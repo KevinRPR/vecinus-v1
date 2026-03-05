@@ -66,39 +66,55 @@ class _PinPadState extends State<PinPad> {
     final muted =
         theme.textTheme.bodySmall?.color?.withValues(alpha: 0.7) ?? AppColors.textMuted;
     final primary = theme.colorScheme.primary;
-    final keySize = widget.keySize;
 
-    return Column(
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: List.generate(widget.length, (index) {
-            final filled = index < _digits.length;
-            return AnimatedContainer(
-              duration: const Duration(milliseconds: 160),
-              margin: const EdgeInsets.symmetric(horizontal: 6),
-              width: 12,
-              height: 12,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: filled ? primary : muted.withValues(alpha: 0.2),
-              ),
-            );
-          }),
-        ),
-        if (widget.errorText != null) ...[
-          const SizedBox(height: 8),
-          Text(
-            widget.errorText!,
-            style: TextStyle(
-              color: theme.colorScheme.error,
-              fontWeight: FontWeight.w600,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        const minKeySize = 44.0;
+        final spacing = (constraints.maxWidth / 18).clamp(6.0, 12.0);
+        final maxCell = (constraints.maxWidth - spacing * 2) / 3;
+        final resolvedKeySize = maxCell < minKeySize
+            ? maxCell
+            : widget.keySize.clamp(minKeySize, maxCell).toDouble();
+
+        return Column(
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: List.generate(widget.length, (index) {
+                final filled = index < _digits.length;
+                return AnimatedContainer(
+                  duration: const Duration(milliseconds: 160),
+                  margin: const EdgeInsets.symmetric(horizontal: 6),
+                  width: 12,
+                  height: 12,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: filled ? primary : muted.withValues(alpha: 0.2),
+                  ),
+                );
+              }),
             ),
-          ),
-        ],
-        const SizedBox(height: 16),
-        _buildKeypad(context, keySize, primary, muted),
-      ],
+            if (widget.errorText != null) ...[
+              const SizedBox(height: 8),
+              Text(
+                widget.errorText!,
+                style: TextStyle(
+                  color: theme.colorScheme.error,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+            const SizedBox(height: 16),
+            _buildKeypad(
+              context,
+              resolvedKeySize,
+              primary,
+              muted,
+              spacing,
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -107,6 +123,7 @@ class _PinPadState extends State<PinPad> {
     double keySize,
     Color primary,
     Color muted,
+    double spacing,
   ) {
     final fillColor = Theme.of(context).colorScheme.surfaceContainerHighest;
     final keys = [
@@ -128,10 +145,10 @@ class _PinPadState extends State<PinPad> {
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
       itemCount: keys.length,
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 3,
-        mainAxisSpacing: 12,
-        crossAxisSpacing: 12,
+        mainAxisSpacing: spacing,
+        crossAxisSpacing: spacing,
       ),
       itemBuilder: (context, index) {
         final value = keys[index];

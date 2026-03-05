@@ -74,7 +74,7 @@ class _UnlockScreenState extends State<UnlockScreen> {
 
     if (!mounted) return;
     if (ok) {
-      _completeUnlock();
+      await _completeUnlock();
       return;
     }
 
@@ -92,7 +92,7 @@ class _UnlockScreenState extends State<UnlockScreen> {
     final valid = await SecurityService.isPinValid(pin);
     if (!mounted) return;
     if (valid) {
-      _completeUnlock();
+      await _completeUnlock();
       return;
     }
     setState(() {
@@ -103,10 +103,32 @@ class _UnlockScreenState extends State<UnlockScreen> {
     });
   }
 
-  void _completeUnlock() {
+  Future<void> _completeUnlock() async {
+    final token = await AuthService.getToken();
+    final userMap = await AuthService.getUser();
+    final valid = await AuthService.isLoggedIn();
+
+    if (!mounted) return;
+    if (token == null || token.isEmpty || userMap == null || !valid) {
+      await AuthService.logout();
+      if (!mounted) return;
+      Navigator.pushReplacement(
+        context,
+        fadeSlideRoute(const LoginScreen()),
+      );
+      return;
+    }
+
+    final user = User.fromJson(userMap);
     Navigator.pushReplacement(
       context,
-      fadeSlideRoute(MainShell(user: widget.user, token: widget.token)),
+      fadeSlideRoute(
+        MainShell(
+          user: user,
+          token: token,
+          fromQuickAccess: true,
+        ),
+      ),
     );
   }
 

@@ -129,7 +129,7 @@ function resolve_user_id_from_token(PDO $conn, string $token): int {
         throw new Exception("Token invalido o expirado.");
     }
 
-    $ttlMinutes = env_int('TOKEN_TTL_MINUTES', 120);
+    $ttlMinutes = env_int('TOKEN_TTL_MINUTES', 43200);
     $refreshMinutes = env_int('TOKEN_REFRESH_THRESHOLD_MINUTES', 10);
     $remainingSeconds = $expiresAt - time();
     if ($remainingSeconds <= ($refreshMinutes * 60)) {
