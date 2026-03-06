@@ -8,6 +8,7 @@ import '../services/auth_service.dart';
 import '../services/security_service.dart';
 import '../theme/app_theme.dart';
 import '../ui_system/components/pin_pad.dart';
+import '../ui_system/feedback/app_haptics.dart';
 import 'login_screen.dart';
 import 'main_shell.dart';
 
@@ -74,6 +75,7 @@ class _UnlockScreenState extends State<UnlockScreen> {
 
     if (!mounted) return;
     if (ok) {
+      AppHaptics.confirm();
       await _completeUnlock();
       return;
     }
@@ -92,6 +94,7 @@ class _UnlockScreenState extends State<UnlockScreen> {
     final valid = await SecurityService.isPinValid(pin);
     if (!mounted) return;
     if (valid) {
+      AppHaptics.confirm();
       await _completeUnlock();
       return;
     }

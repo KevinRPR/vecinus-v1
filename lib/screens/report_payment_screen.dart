@@ -9,7 +9,9 @@ import '../services/api_service.dart';
 import '../services/notification_service.dart';
 import '../services/observability_service.dart';
 import '../theme/app_theme.dart';
+import '../ui_system/components/app_empty_state.dart';
 import '../ui_system/components/app_icon_button.dart';
+import '../ui_system/feedback/app_haptics.dart';
 import '../ui_system/formatters/money.dart';
 
 typedef PreparePagoReporteLoader = Future<Map<String, dynamic>> Function({
@@ -301,6 +303,7 @@ class _ReportPaymentScreenState extends State<ReportPaymentScreen> {
       );
       return;
     }
+    AppHaptics.impact();
     setState(() => _formError = null);
 
     final notificaciones = _pendientes
@@ -381,13 +384,15 @@ class _ReportPaymentScreenState extends State<ReportPaymentScreen> {
       return Scaffold(
         appBar: AppBar(title: const Text('Reportar pago')),
         body: Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(_error!, textAlign: TextAlign.center),
-              const SizedBox(height: 12),
-              ElevatedButton(onPressed: _load, child: const Text('Reintentar')),
-            ],
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            child: AppEmptyState(
+              icon: Icons.wifi_off_rounded,
+              title: 'No pudimos cargar los datos del pago.',
+              subtitle: 'Revisa tu conexion e intenta de nuevo.',
+              actionLabel: 'Reintentar',
+              onAction: _load,
+            ),
           ),
         ),
       );
@@ -1068,6 +1073,7 @@ class _BankDetailStep extends StatelessWidget {
   });
 
   void _copy(BuildContext context, String value) {
+    AppHaptics.impact();
     Clipboard.setData(ClipboardData(text: value));
     ScaffoldMessenger.of(context)
         .showSnackBar(const SnackBar(content: Text('Copiado')));

@@ -12,6 +12,7 @@ import '../services/auth_service.dart';
 import '../services/security_service.dart';
 import '../preferences_controller.dart';
 import '../theme_controller.dart';
+import '../ui_system/feedback/app_haptics.dart';
 import '../theme/app_theme.dart';
 import 'login_screen.dart';
 
@@ -713,10 +714,7 @@ class _UserScreenState extends State<UserScreen> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Theme.of(context).cardColor,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
+      backgroundColor: Colors.transparent,
       builder: (sheetContext) {
         final bottomInset = MediaQuery.of(sheetContext).viewInsets.bottom;
         final isDark = Theme.of(sheetContext).brightness == Brightness.dark;
@@ -819,13 +817,19 @@ class _UserScreenState extends State<UserScreen> {
         return ValueListenableBuilder<UserPreferences>(
           valueListenable: preferencesController.preferences,
           builder: (context, prefs, _) {
-            return SafeArea(
-              top: false,
-              child: SingleChildScrollView(
-                padding: EdgeInsets.fromLTRB(20, 12, 20, 24 + bottomInset),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
+            return Material(
+              color: Theme.of(sheetContext).cardColor,
+              shape: const RoundedRectangleBorder(
+                borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: SafeArea(
+                top: false,
+                child: SingleChildScrollView(
+                  padding: EdgeInsets.fromLTRB(20, 12, 20, 24 + bottomInset),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
                     _sheetHandle(muted),
                     const SizedBox(height: 12),
                     Text(
@@ -842,6 +846,7 @@ class _UserScreenState extends State<UserScreen> {
                     _sheetCard(
                       cardColor: cardColor,
                       borderColor: borderColor,
+                      padding: const EdgeInsets.fromLTRB(16, 14, 16, 6),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -859,24 +864,29 @@ class _UserScreenState extends State<UserScreen> {
                             'Escala actual: ${(prefs.textScale * 100).round()}%',
                             style: TextStyle(fontSize: 12, color: muted),
                           ),
-                          Slider(
-                            value: prefs.textScale,
-                            min: 0.85,
-                            max: 1.25,
-                            divisions: 8,
-                            label: '${(prefs.textScale * 100).round()}%',
-                            activeColor: AppColors.brandBlue600,
-                            onChanged: (value) {
-                              preferencesController.updateWith(
-                                (current) => current.copyWith(textScale: value),
-                              );
-                            },
+                          Padding(
+                            padding: const EdgeInsets.only(top: 4),
+                            child: Slider(
+                              value: prefs.textScale,
+                              min: 0.85,
+                              max: 1.25,
+                              divisions: 8,
+                              label: '${(prefs.textScale * 100).round()}%',
+                              activeColor: AppColors.brandBlue600,
+                              onChanged: (value) {
+                                preferencesController.updateWith(
+                                  (current) =>
+                                      current.copyWith(textScale: value),
+                                );
+                              },
+                            ),
                           ),
                           const Divider(height: 1),
                           _buildSwitchTile(
                             title: 'Alto contraste',
                             subtitle: 'Mejora la legibilidad.',
                             value: prefs.highContrast,
+                            contentPadding: EdgeInsets.zero,
                             onChanged: (value) {
                               preferencesController.updateWith(
                                 (current) =>
@@ -889,6 +899,7 @@ class _UserScreenState extends State<UserScreen> {
                             title: 'Reducir animaciones',
                             subtitle: 'Minimiza los movimientos en pantalla.',
                             value: prefs.reduceMotion,
+                            contentPadding: EdgeInsets.zero,
                             onChanged: (value) {
                               preferencesController.updateWith(
                                 (current) =>
@@ -962,6 +973,7 @@ class _UserScreenState extends State<UserScreen> {
                               );
                             },
                           ),
+                          const Divider(height: 1),
                           _buildSwitchTile(
                             title: 'Alertas',
                             subtitle: 'Advertencias y recordatorios.',
@@ -975,6 +987,7 @@ class _UserScreenState extends State<UserScreen> {
                               );
                             },
                           ),
+                          const Divider(height: 1),
                           _buildSwitchTile(
                             title: 'Eventos',
                             subtitle: 'Actividades y reuniones.',
@@ -988,6 +1001,7 @@ class _UserScreenState extends State<UserScreen> {
                               );
                             },
                           ),
+                          const Divider(height: 1),
                           _buildSwitchTile(
                             title: 'Pagos',
                             subtitle: 'Vencimientos y confirmaciones.',
@@ -1016,6 +1030,7 @@ class _UserScreenState extends State<UserScreen> {
                               );
                             },
                           ),
+                          const Divider(height: 1),
                           _buildSwitchTile(
                             title: 'Email',
                             subtitle: 'Resumenes por correo.',
@@ -1029,6 +1044,7 @@ class _UserScreenState extends State<UserScreen> {
                               );
                             },
                           ),
+                          const Divider(height: 1),
                           _buildSwitchTile(
                             title: 'WhatsApp',
                             subtitle: 'Mensajes rapidos al celular.',
@@ -1073,6 +1089,7 @@ class _UserScreenState extends State<UserScreen> {
                       _sheetCard(
                         cardColor: cardColor,
                         borderColor: borderColor,
+                        padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
@@ -1131,6 +1148,7 @@ class _UserScreenState extends State<UserScreen> {
                               subtitle:
                                   'Muestra menos detalle en el dashboard.',
                               value: prefs.inmueble.compactSummary,
+                              contentPadding: EdgeInsets.zero,
                               onChanged: (value) {
                                 preferencesController.updateWith(
                                   (current) => current.copyWith(
@@ -1152,7 +1170,8 @@ class _UserScreenState extends State<UserScreen> {
                         child: const Text('Cerrar'),
                       ),
                     ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             );
@@ -1276,6 +1295,7 @@ class _UserScreenState extends State<UserScreen> {
                                   );
                                   return;
                                 }
+                                AppHaptics.impact();
                               }
                               preferencesController.updateWith(
                                 (current) => current.copyWith(
@@ -1286,6 +1306,7 @@ class _UserScreenState extends State<UserScreen> {
                               );
                             },
                           ),
+                          const Divider(height: 1),
                           _buildSwitchTile(
                             title: 'Biometria para acciones sensibles',
                             subtitle: 'Pagos y cambios de contrasena.',
@@ -1310,6 +1331,7 @@ class _UserScreenState extends State<UserScreen> {
                                   );
                                   return;
                                 }
+                                AppHaptics.impact();
                               }
                               preferencesController.updateWith(
                                 (current) => current.copyWith(
@@ -1348,6 +1370,7 @@ class _UserScreenState extends State<UserScreen> {
                               );
                             },
                           ),
+                          const Divider(height: 1),
                           _buildSwitchTile(
                             title: 'PIN para acciones sensibles',
                             subtitle: 'Pagos y cambios de contrasena.',
@@ -1384,6 +1407,7 @@ class _UserScreenState extends State<UserScreen> {
                     _sheetCard(
                       cardColor: cardColor,
                       borderColor: borderColor,
+                      padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -1866,6 +1890,7 @@ class _UserScreenState extends State<UserScreen> {
     required Widget child,
     required Color cardColor,
     required Color borderColor,
+    EdgeInsetsGeometry? padding,
   }) {
     return Container(
       decoration: BoxDecoration(
@@ -1882,7 +1907,12 @@ class _UserScreenState extends State<UserScreen> {
           ),
         ],
       ),
-      child: child,
+      child: padding == null
+          ? child
+          : Padding(
+              padding: padding,
+              child: child,
+            ),
     );
   }
 
@@ -1891,9 +1921,11 @@ class _UserScreenState extends State<UserScreen> {
     String? subtitle,
     required bool value,
     ValueChanged<bool>? onChanged,
+    EdgeInsetsGeometry? contentPadding,
   }) {
     return SwitchListTile.adaptive(
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+      contentPadding:
+          contentPadding ?? const EdgeInsets.symmetric(horizontal: 16),
       title: Text(title),
       subtitle: subtitle != null ? Text(subtitle) : null,
       value: value,

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../ui_system/feedback/app_haptics.dart';
 import '../animations/transitions.dart';
 import '../models/user.dart';
 import '../preferences_controller.dart';
@@ -207,6 +208,7 @@ class _LoginScreenState extends State<LoginScreen> {
             reason: 'Activa el acceso rapido con biometria.',
           );
           if (ok) {
+            AppHaptics.impact();
             preferencesController.updateWith(
               (prefs) => prefs.copyWith(
                 security: prefs.security.copyWith(biometricForLogin: true),

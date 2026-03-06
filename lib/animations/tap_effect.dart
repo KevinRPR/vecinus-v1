@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import 'app_animations.dart';
+import '../ui_system/feedback/app_haptics.dart';
 
 /// Tap scale effect with optional haptic feedback.
 class TapEffect extends StatefulWidget {
@@ -47,7 +47,7 @@ class _TapEffectState extends State<TapEffect>
     return GestureDetector(
       onTap: () async {
         await _animateTap();
-        HapticFeedback.lightImpact();
+        AppHaptics.selection();
         widget.onTap?.call();
       },
       child: AnimatedBuilder(

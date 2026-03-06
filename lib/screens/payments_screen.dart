@@ -352,12 +352,48 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
   }
 
   Widget _buildEmptyState() {
-    return const Padding(
-      padding: EdgeInsets.symmetric(horizontal: 20),
+    final hasInmuebles = widget.inmuebles.isNotEmpty;
+    String title;
+    String subtitle;
+    String? actionLabel;
+    VoidCallback? onAction;
+
+    if (!hasInmuebles) {
+      title = 'Aun no tienes inmuebles.';
+      subtitle = 'Cuando agregues uno, veras sus pagos aqui.';
+      actionLabel = 'Actualizar';
+      onAction = () => widget.onRefresh();
+    } else {
+      switch (_filter) {
+        case _PaymentFilter.pending:
+          title = 'Sin deudas pendientes.';
+          subtitle = 'Todo esta al dia por ahora.';
+          actionLabel = 'Ver todos';
+          onAction = () => setState(() => _filter = _PaymentFilter.all);
+          break;
+        case _PaymentFilter.paid:
+          title = 'Aun no hay pagos al dia.';
+          subtitle = 'Revisa los pendientes para ver lo que falta.';
+          actionLabel = 'Ver pendientes';
+          onAction = () => setState(() => _filter = _PaymentFilter.pending);
+          break;
+        case _PaymentFilter.all:
+          title = 'No hay pagos para mostrar.';
+          subtitle = 'Intenta actualizar para ver los ultimos datos.';
+          actionLabel = 'Actualizar';
+          onAction = () => widget.onRefresh();
+          break;
+      }
+    }
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
       child: AppEmptyState(
         icon: IconsRounded.payments,
-        title: 'Sin inmuebles registrados.',
-        subtitle: 'Agrega un inmueble para ver tus pagos.',
+        title: title,
+        subtitle: subtitle,
+        actionLabel: actionLabel,
+        onAction: onAction,
       ),
     );
   }

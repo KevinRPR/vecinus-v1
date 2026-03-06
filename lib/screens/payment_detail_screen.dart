@@ -8,6 +8,7 @@ import '../theme/app_theme.dart';
 import '../ui_system/components/app_empty_state.dart';
 import '../ui_system/components/app_icon_button.dart';
 import '../ui_system/components/app_status_chip.dart';
+import '../ui_system/feedback/app_haptics.dart';
 import '../ui_system/formatters/money.dart';
 import '../ui_system/formatters/safe_text.dart';
 import 'inmueble_detail_screen.dart';
@@ -141,10 +142,14 @@ class _PaymentDetailScreenState extends State<PaymentDetailScreen> {
     final total = items.fold<double>(0, (sum, p) => sum + _parseMonto(p.monto));
 
     if (items.isEmpty) {
-      return const AppEmptyState(
+      final hasReportes = _reportes.isNotEmpty;
+      return AppEmptyState(
         icon: IconsRounded.receipt_long,
-        title: 'No hay deuda pendiente.',
-        subtitle: 'Cuando exista deuda, aparecera aqui.',
+        title: 'Todo al dia por ahora.',
+        subtitle: 'Si aparece una cuota, la veras aqui.',
+        actionLabel: hasReportes ? 'Ver pagos reportados' : 'Actualizar',
+        onAction:
+            hasReportes ? () => _openHistorial(context) : () => _loadReportes(),
       );
     }
 
@@ -605,6 +610,7 @@ class _PaymentDetailScreenState extends State<PaymentDetailScreen> {
   }
 
   void _reportarPago(BuildContext context) {
+    AppHaptics.impact();
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => ReportPaymentScreen(

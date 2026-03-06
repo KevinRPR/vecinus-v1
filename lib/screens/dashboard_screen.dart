@@ -9,7 +9,6 @@ import '../models/user_preferences.dart';
 import '../preferences_controller.dart';
 import '../services/notification_service.dart';
 import '../theme/app_theme.dart';
-import '../ui_system/components/app_empty_state.dart';
 import '../ui_system/formatters/money.dart';
 import '../ui_system/formatters/safe_text.dart';
 import '../ui_system/perf/app_perf.dart';
@@ -21,6 +20,7 @@ class DashboardScreen extends StatelessWidget {
   final Future<void> Function() onRefresh;
   final VoidCallback onViewPayments;
   final VoidCallback onViewAlerts;
+  final VoidCallback onViewProfile;
   final DateTime? lastSync;
 
   const DashboardScreen({
@@ -31,6 +31,7 @@ class DashboardScreen extends StatelessWidget {
     required this.onRefresh,
     required this.onViewPayments,
     required this.onViewAlerts,
+    required this.onViewProfile,
     this.lastSync,
   });
 
@@ -126,6 +127,7 @@ class DashboardScreen extends StatelessWidget {
                   user: user,
                   lastSync: lastSync,
                   isDark: isDark,
+                  onViewProfile: onViewProfile,
                 ),
                 Expanded(
                   child: RefreshIndicator(
@@ -306,10 +308,13 @@ class DashboardScreen extends StatelessWidget {
         ),
         const SizedBox(height: 10),
         if (highlights.isEmpty)
-          const AppEmptyState(
-            icon: IconsRounded.notifications_off,
-            title: 'No hay alertas importantes.',
-            subtitle: 'Te avisaremos cuando exista una novedad.',
+          _alertEmptyCard(
+            cardColor: cardColor,
+            borderColor: borderColor,
+            shadowColor: shadowColor,
+            textMuted: textMuted,
+            textStrong: textStrong,
+            isDark: isDark,
           )
         else
           Column(
@@ -571,6 +576,61 @@ class DashboardScreen extends StatelessWidget {
     );
   }
 
+  Widget _alertEmptyCard({
+    required Color cardColor,
+    required Color borderColor,
+    required Color shadowColor,
+    required Color textMuted,
+    required Color textStrong,
+    required bool isDark,
+  }) {
+    return _glassCard(
+      color: cardColor,
+      borderColor: borderColor,
+      shadowColor: shadowColor,
+      padding: const EdgeInsets.all(14),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            height: 36,
+            width: 36,
+            decoration: BoxDecoration(
+              color: AppColors.brandBlue600.withValues(alpha: isDark ? 0.2 : 0.12),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(
+              IconsRounded.notifications_off,
+              color: AppColors.brandBlue600,
+              size: 18,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Todo tranquilo por ahora.',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: textStrong,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Si aparece una alerta, la veras aqui.',
+                  style: TextStyle(fontSize: 12, color: textMuted),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _communityActionCard({
     required Color cardColor,
     required Color borderColor,
@@ -689,9 +749,52 @@ class DashboardScreen extends StatelessWidget {
           shadowColor: shadowColor,
           padding: const EdgeInsets.all(14),
           child: items.isEmpty
-              ? Text(
-                  'No hay actividad reciente.',
-                  style: TextStyle(color: textMuted),
+              ? SizedBox(
+                  height: 104,
+                  child: Center(
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          height: 36,
+                          width: 36,
+                          decoration: BoxDecoration(
+                            color: AppColors.brandBlue600
+                                .withValues(alpha: isDark ? 0.2 : 0.12),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(
+                            IconsRounded.history,
+                            color: AppColors.brandBlue600,
+                            size: 18,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Sin actividad reciente',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: textStrong,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              'Aparecera cuando haya movimientos.',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: textMuted,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
                 )
               : Column(
                   children: [
@@ -870,11 +973,13 @@ class _DashboardHeader extends StatelessWidget {
   final User user;
   final DateTime? lastSync;
   final bool isDark;
+  final VoidCallback onViewProfile;
 
   const _DashboardHeader({
     required this.user,
     required this.lastSync,
     required this.isDark,
+    required this.onViewProfile,
   });
 
   @override
@@ -970,25 +1075,34 @@ class _DashboardHeader extends StatelessWidget {
     final borderColor = isDark ? AppColors.darkBorder : AppColors.border;
     return Semantics(
       label: 'Perfil activo',
-      child: SizedBox(
-        height: 42,
-        width: 42,
-        child: Container(
-          padding: const EdgeInsets.all(2),
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            border: Border.all(color: borderColor, width: 2),
-          ),
-          child: ClipOval(
-            child: avatarUrl != null && avatarUrl.isNotEmpty
-                ? Image.network(
-                    avatarUrl,
-                    fit: BoxFit.cover,
-                    errorBuilder: (context, error, stackTrace) {
-                      return _fallbackAvatar();
-                    },
-                  )
-                : _fallbackAvatar(),
+      button: true,
+      child: Material(
+        color: Colors.transparent,
+        shape: const CircleBorder(),
+        child: InkWell(
+          customBorder: const CircleBorder(),
+          onTap: onViewProfile,
+          child: SizedBox(
+            height: 42,
+            width: 42,
+            child: Container(
+              padding: const EdgeInsets.all(2),
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(color: borderColor, width: 2),
+              ),
+              child: ClipOval(
+                child: avatarUrl != null && avatarUrl.isNotEmpty
+                    ? Image.network(
+                        avatarUrl,
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) {
+                          return _fallbackAvatar();
+                        },
+                      )
+                    : _fallbackAvatar(),
+              ),
+            ),
           ),
         ),
       ),
@@ -1025,27 +1139,35 @@ class _PrimaryPillButton extends StatelessWidget {
         : const EdgeInsets.symmetric(horizontal: 14, vertical: 8);
     final fontSize = dense ? 12.0 : 13.0;
 
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: padding,
-        decoration: BoxDecoration(
-          color: AppColors.brandBlue600,
+    return Semantics(
+      button: true,
+      label: label,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
           borderRadius: BorderRadius.circular(999),
-          boxShadow: [
-            BoxShadow(
-              color: AppColors.brandBlue600.withValues(alpha: 0.25),
-              blurRadius: 12,
-              offset: const Offset(0, 6),
+          child: Ink(
+            padding: padding,
+            decoration: BoxDecoration(
+              color: AppColors.brandBlue600,
+              borderRadius: BorderRadius.circular(999),
+              boxShadow: [
+                BoxShadow(
+                  color: AppColors.brandBlue600.withValues(alpha: 0.25),
+                  blurRadius: 12,
+                  offset: const Offset(0, 6),
+                ),
+              ],
             ),
-          ],
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: fontSize,
-            fontWeight: FontWeight.w700,
-            color: Colors.white,
+            child: Text(
+              label,
+              style: TextStyle(
+                fontSize: fontSize,
+                fontWeight: FontWeight.w700,
+                color: Colors.white,
+              ),
+            ),
           ),
         ),
       ),
@@ -1068,14 +1190,25 @@ class _ActionLink extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Text(
-        label,
-        style: TextStyle(
-          fontSize: fontSize,
-          fontWeight: FontWeight.w700,
-          color: color,
+    return Semantics(
+      button: true,
+      label: label,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(8),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+            child: Text(
+              label,
+              style: TextStyle(
+                fontSize: fontSize,
+                fontWeight: FontWeight.w700,
+                color: color,
+              ),
+            ),
+          ),
         ),
       ),
     );

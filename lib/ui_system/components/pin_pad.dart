@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../feedback/app_haptics.dart';
 
 import '../../theme/app_theme.dart';
 
@@ -46,6 +47,7 @@ class _PinPadState extends State<PinPad> {
 
   void _addDigit(int digit) {
     if (_digits.length >= widget.length) return;
+    AppHaptics.selection();
     setState(() => _digits.add(digit));
     final pin = _digits.join();
     widget.onChanged?.call(pin);
@@ -56,6 +58,7 @@ class _PinPadState extends State<PinPad> {
 
   void _backspace() {
     if (_digits.isEmpty) return;
+    AppHaptics.selection();
     setState(() => _digits.removeLast());
     widget.onChanged?.call(_digits.join());
   }
@@ -198,32 +201,29 @@ class _PinPadState extends State<PinPad> {
       button: true,
       label: label,
       child: Material(
-        color: Colors.transparent,
-        child: InkResponse(
+        color: fillColor,
+        shape: const CircleBorder(),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
           onTap: onTap,
-          radius: size / 2,
-          containedInkWell: true,
-          highlightShape: BoxShape.circle,
-          child: Center(
-            child: Container(
-              width: size,
-              height: size,
-              decoration: BoxDecoration(
-                color: fillColor,
-                shape: BoxShape.circle,
-              ),
-              child: Center(
-                child: icon != null
-                    ? Icon(icon, color: color)
-                    : Text(
-                        label,
-                        style: TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.w700,
-                          color: color,
-                        ),
+          customBorder: const CircleBorder(),
+          splashFactory: InkRipple.splashFactory,
+          splashColor: color.withValues(alpha: 0.12),
+          highlightColor: color.withValues(alpha: 0.08),
+          child: SizedBox(
+            width: size,
+            height: size,
+            child: Center(
+              child: icon != null
+                  ? Icon(icon, color: color)
+                  : Text(
+                      label,
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w700,
+                        color: color,
                       ),
-              ),
+                    ),
             ),
           ),
         ),

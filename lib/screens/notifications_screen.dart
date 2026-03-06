@@ -24,6 +24,10 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     _items = NotificationService.all();
   }
 
+  Future<void> _reload() async {
+    setState(() => _items = NotificationService.all());
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -49,8 +53,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         ],
       ),
       body: RefreshIndicator(
-        onRefresh: () async =>
-            setState(() => _items = NotificationService.all()),
+        onRefresh: _reload,
         child: FadeSlideTransition(
           beginOffset: const Offset(0, 0.02),
           child: ListView(
@@ -58,10 +61,12 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
             padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
             children: [
               if (_items.isEmpty)
-                const AppEmptyState(
+                AppEmptyState(
                   icon: IconsRounded.notifications_off,
-                  title: 'No tienes alertas.',
-                  subtitle: 'Te avisaremos cuando exista una novedad.',
+                  title: 'Sin alertas por ahora.',
+                  subtitle: 'Te avisaremos si aparece algo nuevo.',
+                  actionLabel: 'Actualizar',
+                  onAction: () => _reload(),
                 )
               else
                 ...sections.expand((section) {

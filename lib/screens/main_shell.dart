@@ -212,7 +212,7 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
   bool _isConnectionError(Object error) {
     final message = error.toString().toLowerCase();
     return message.contains('conexion') ||
-        message.contains('conexiÃ³n') ||
+        message.contains('conexión') ||
         message.contains('timeout') ||
         message.contains('socket');
   }
@@ -275,6 +275,7 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
         onRefresh: _loadInmuebles,
         onViewPayments: () => _onTabSelected(1),
         onViewAlerts: () => _onTabSelected(2),
+        onViewProfile: () => _onTabSelected(3),
         lastSync: _lastFetch,
       ),
       PaymentsScreen(
@@ -355,6 +356,10 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
                 color: Colors.transparent,
                 child: InkWell(
                   borderRadius: BorderRadius.circular(16),
+                  splashColor: Colors.transparent,
+                  highlightColor: Colors.transparent,
+                  focusColor: Colors.transparent,
+                  hoverColor: Colors.transparent,
                   onTap: () => _onTabSelected(index),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,

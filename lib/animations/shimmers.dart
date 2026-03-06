@@ -15,12 +15,26 @@ class ShimmerSkeleton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final base = isDark ? Colors.white24 : Colors.black12;
-    final highlight = isDark ? Colors.white38 : Colors.black26;
+    final media = MediaQuery.maybeOf(context);
+    final reduceMotion = media?.disableAnimations ?? false;
+    final base =
+        isDark ? Colors.white10 : Colors.black12.withValues(alpha: 0.08);
+    final highlight =
+        isDark ? Colors.white24 : Colors.black12.withValues(alpha: 0.18);
+    if (reduceMotion) {
+      return Container(
+        height: height,
+        width: width,
+        decoration: BoxDecoration(
+          color: base,
+          borderRadius: borderRadius,
+        ),
+      );
+    }
     return Shimmer.fromColors(
       baseColor: base,
       highlightColor: highlight,
-      period: const Duration(milliseconds: 1200),
+      period: const Duration(milliseconds: 1400),
       child: Container(
         height: height,
         width: width,

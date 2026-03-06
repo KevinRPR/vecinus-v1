@@ -40,7 +40,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Estado de cuenta'), findsOneWidget);
-    expect(find.text('No hay deuda pendiente.'), findsOneWidget);
+    expect(find.text('Todo al dia por ahora.'), findsOneWidget);
     expect(find.text('Pagos reportados'), findsOneWidget);
     expect(find.text('No hay pagos reportados.'), findsOneWidget);
   });
