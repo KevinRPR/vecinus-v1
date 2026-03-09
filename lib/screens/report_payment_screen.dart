@@ -13,6 +13,7 @@ import '../ui_system/components/app_empty_state.dart';
 import '../ui_system/components/app_icon_button.dart';
 import '../ui_system/feedback/app_haptics.dart';
 import '../ui_system/formatters/money.dart';
+import '../ui_system/perf/app_perf.dart';
 
 typedef PreparePagoReporteLoader = Future<Map<String, dynamic>> Function({
   required String token,
@@ -751,6 +752,7 @@ class _AmountStep extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
+    final reduceEffects = AppPerf.reduceEffects(context);
     final muted =
         theme.textTheme.bodySmall?.color?.withValues(alpha: 0.7) ?? AppColors.textMuted;
     final hasDebt = totalPendienteBase > 0;
@@ -770,7 +772,7 @@ class _AmountStep extends StatelessWidget {
             borderRadius: BorderRadius.circular(14),
             border: Border.all(color: theme.colorScheme.outline),
             boxShadow: [
-              if (!isDark)
+              if (!isDark && !reduceEffects)
                 BoxShadow(
                   color: Colors.black.withValues(alpha: 0.06),
                   blurRadius: 16,
@@ -895,6 +897,7 @@ class _SelectBankStep extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
+    final reduceEffects = AppPerf.reduceEffects(context);
     final muted =
         theme.textTheme.bodySmall?.color?.withValues(alpha: 0.7) ?? AppColors.textMuted;
 
@@ -933,7 +936,7 @@ class _SelectBankStep extends StatelessWidget {
               borderRadius: BorderRadius.circular(14),
               border: Border.all(color: theme.colorScheme.outline),
               boxShadow: [
-                if (!isDark)
+                if (!isDark && !reduceEffects)
                   BoxShadow(
                     color: Colors.black.withValues(alpha: 0.06),
                     blurRadius: 16,
@@ -983,7 +986,7 @@ class _SelectBankStep extends StatelessWidget {
                   borderRadius: BorderRadius.circular(14),
                   border: Border.all(color: theme.colorScheme.outline),
                   boxShadow: [
-                    if (!isDark)
+                    if (!isDark && !reduceEffects)
                       BoxShadow(
                         color: Colors.black.withValues(alpha: 0.06),
                         blurRadius: 16,
@@ -1083,6 +1086,7 @@ class _BankDetailStep extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
+    final reduceEffects = AppPerf.reduceEffects(context);
     if (cuenta == null) {
       return Center(
         child: Column(
@@ -1113,7 +1117,7 @@ class _BankDetailStep extends StatelessWidget {
           borderRadius: BorderRadius.circular(14),
           border: Border.all(color: theme.colorScheme.outline),
           boxShadow: [
-            if (!isDark)
+            if (!isDark && !reduceEffects)
               BoxShadow(
                 color: Colors.black.withValues(alpha: 0.06),
                 blurRadius: 16,

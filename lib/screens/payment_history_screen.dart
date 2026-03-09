@@ -5,6 +5,7 @@ import '../models/inmueble.dart';
 import '../models/pago.dart';
 import '../services/api_service.dart';
 import '../theme/app_theme.dart';
+import '../ui_system/perf/app_perf.dart';
 
 enum _HistoryFilter { all, paid, pending, overdue }
 
@@ -51,8 +52,10 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final cardColor = theme.cardColor;
-    final shadow =
-        Colors.black.withValues(alpha: theme.brightness == Brightness.dark ? 0.3 : 0.08);
+    final reduceEffects = AppPerf.reduceEffects(context);
+    final shadowColor = Colors.black.withValues(
+      alpha: theme.brightness == Brightness.dark ? 0.3 : 0.08,
+    );
     final muted =
         theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.65) ?? Colors.grey;
     final pagos = _pagosFiltrados;
@@ -91,8 +94,9 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen> {
                       context,
                       pagos[index],
                       cardColor,
-                      shadow,
+                      shadowColor,
                       muted,
+                      reduceEffects,
                     ),
                   ),
           ),
@@ -156,8 +160,9 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen> {
     BuildContext context,
     Pago pago,
     Color cardColor,
-    Color shadow,
+    Color shadowColor,
     Color muted,
+    bool reduceEffects,
   ) {
     final status = _classifyPago(pago);
     final statusLabel = _statusLabel(status);
@@ -175,13 +180,15 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen> {
         decoration: BoxDecoration(
           color: cardColor,
           borderRadius: BorderRadius.circular(14),
-          boxShadow: [
-            BoxShadow(
-              color: shadow,
-              blurRadius: 12,
-              offset: const Offset(0, 6),
-            ),
-          ],
+          boxShadow: reduceEffects
+              ? const []
+              : [
+                  BoxShadow(
+                    color: shadowColor,
+                    blurRadius: 12,
+                    offset: const Offset(0, 6),
+                  ),
+                ],
         ),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,

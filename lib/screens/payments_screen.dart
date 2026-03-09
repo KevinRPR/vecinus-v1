@@ -11,6 +11,7 @@ import '../ui_system/components/app_empty_state.dart';
 import '../ui_system/components/app_icon_button.dart';
 import '../ui_system/components/app_status_chip.dart';
 import '../ui_system/formatters/money.dart';
+import '../ui_system/perf/app_perf.dart';
 import 'payment_detail_screen.dart';
 
 enum _PaymentFilter { pending, paid, all }
@@ -87,6 +88,7 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
         final textMuted = theme.textTheme.bodySmall?.color?.withValues(alpha: 0.7) ??
             (isDark ? AppColors.darkTextMuted : AppColors.textMuted);
         final sectionItems = _buildSectionItems(_filteredInmuebles);
+        final reduceEffects = AppPerf.reduceEffects(context);
 
         return Scaffold(
           backgroundColor: background,
@@ -113,6 +115,7 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
                       surfaceAlt: surfaceAlt,
                       borderColor: borderColor,
                       textMuted: textMuted,
+                      reduceEffects: reduceEffects,
                     ),
                   ),
                 ),
@@ -163,6 +166,7 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
                               cardColor: cardColor,
                               borderColor: borderColor,
                               textMuted: textMuted,
+                              reduceEffects: reduceEffects,
                             ),
                           );
                         },
@@ -186,6 +190,7 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
     required Color surfaceAlt,
     required Color borderColor,
     required Color textMuted,
+    required bool reduceEffects,
   }) {
     final totalCount = widget.inmuebles.length;
     final paidCount = widget.inmuebles.where(_sinDeuda).length;
@@ -202,13 +207,15 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
         color: surfaceAlt,
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: borderColor),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: isDark ? 0.16 : 0.06),
-            blurRadius: 16,
-            offset: const Offset(0, 8),
-          ),
-        ],
+        boxShadow: reduceEffects
+            ? const []
+            : [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: isDark ? 0.16 : 0.06),
+                  blurRadius: 16,
+                  offset: const Offset(0, 8),
+                ),
+              ],
       ),
       padding: const EdgeInsets.all(20),
       child: Column(
@@ -316,6 +323,7 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
     final textColor = selected
         ? Colors.white
         : theme.colorScheme.onSurface.withValues(alpha: 0.7);
+    final reduceEffects = AppPerf.reduceEffects(context);
 
     return Material(
       color: Colors.transparent,
@@ -323,17 +331,17 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
         borderRadius: BorderRadius.circular(999),
         onTap: () => setState(() => _filter = value),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
-          decoration: BoxDecoration(
-            color: background,
-            borderRadius: BorderRadius.circular(999),
-            border: Border.all(color: border),
-            boxShadow: selected
-                ? [
-                    BoxShadow(
-                      color: AppColors.brandBlue600.withValues(alpha: 0.2),
-                      blurRadius: 10,
-                      offset: const Offset(0, 4),
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+            decoration: BoxDecoration(
+              color: background,
+              borderRadius: BorderRadius.circular(999),
+              border: Border.all(color: border),
+              boxShadow: selected && !reduceEffects
+                  ? [
+                      BoxShadow(
+                        color: AppColors.brandBlue600.withValues(alpha: 0.2),
+                        blurRadius: 10,
+                        offset: const Offset(0, 4),
                     ),
                   ]
                 : null,
@@ -442,6 +450,7 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
     required Color cardColor,
     required Color borderColor,
     required Color textMuted,
+    required bool reduceEffects,
   }) {
     final deuda = _parseMonto(inmueble.deudaActual);
     final sinDeuda = deuda <= 0;
@@ -464,13 +473,15 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
         color: background,
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: borderColor),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.05),
-            blurRadius: 14,
-            offset: const Offset(0, 6),
-          ),
-        ],
+        boxShadow: reduceEffects
+            ? const []
+            : [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.05),
+                  blurRadius: 14,
+                  offset: const Offset(0, 6),
+                ),
+              ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -889,48 +900,52 @@ class _PaymentsHeaderDelegate extends SliverPersistentHeaderDelegate {
         : '$inmuebleCount inmuebles registrados';
     final titleStyle = theme.appBarTheme.titleTextStyle ??
         theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700);
-
-    return ClipRect(
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-        child: Container(
-          decoration: BoxDecoration(
-            color: background,
-            border: Border(bottom: BorderSide(color: borderColor)),
-          ),
-          padding: EdgeInsets.fromLTRB(20, topPadding + 12, 20, 12),
-          child: Row(
+    final blurSigma = AppPerf.blurSigma(context, 18);
+    final content = Container(
+      decoration: BoxDecoration(
+        color: background,
+        border: Border(bottom: BorderSide(color: borderColor)),
+      ),
+      padding: EdgeInsets.fromLTRB(20, topPadding + 12, 20, 12),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(
-                        'Pagos',
-                        style: titleStyle,
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        subtitle,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.textTheme.bodySmall?.color?.withValues(
-                                alpha: 0.7,
-                              ),
-                        ),
-                      ),
-                    ],
-                  ),
+                Text(
+                  'Pagos',
+                  style: titleStyle,
                 ),
-                AppIconButton(
-                  icon: IconsRounded.help_outline,
-                  tooltip: 'Ayuda',
-                  onPressed: onOpenHelp,
+                const SizedBox(height: 4),
+                Text(
+                  subtitle,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.textTheme.bodySmall?.color?.withValues(
+                          alpha: 0.7,
+                        ),
+                  ),
                 ),
               ],
             ),
-        ),
+          ),
+          AppIconButton(
+            icon: IconsRounded.help_outline,
+            tooltip: 'Ayuda',
+            onPressed: onOpenHelp,
+          ),
+        ],
       ),
+    );
+
+    return ClipRect(
+      child: blurSigma == 0
+          ? content
+          : BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: blurSigma, sigmaY: blurSigma),
+              child: content,
+            ),
     );
   }
 
