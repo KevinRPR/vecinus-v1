@@ -5,6 +5,7 @@ import '../models/inmueble.dart';
 import '../models/pago.dart';
 import '../services/api_service.dart';
 import '../theme/app_theme.dart';
+import '../animations/transitions.dart';
 import '../ui_system/perf/app_perf.dart';
 
 enum _HistoryFilter { all, paid, pending, overdue }
@@ -85,18 +86,21 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen> {
           Expanded(
             child: pagos.isEmpty
                 ? _emptyState(muted)
-                : ListView.separated(
-                    physics: const AlwaysScrollableScrollPhysics(),
-                    padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
-                    itemCount: pagos.length,
-                    separatorBuilder: (_, __) => const SizedBox(height: 12),
-                    itemBuilder: (_, index) => _pagoTile(
-                      context,
-                      pagos[index],
-                      cardColor,
-                      shadowColor,
-                      muted,
-                      reduceEffects,
+                : FadeSlideTransition(
+                    beginOffset: const Offset(0, 0.02),
+                    child: ListView.separated(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+                      itemCount: pagos.length,
+                      separatorBuilder: (_, __) => const SizedBox(height: 12),
+                      itemBuilder: (_, index) => _pagoTile(
+                        context,
+                        pagos[index],
+                        cardColor,
+                        shadowColor,
+                        muted,
+                        reduceEffects,
+                      ),
                     ),
                   ),
           ),
@@ -202,8 +206,8 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen> {
               ),
               child: Icon(
                 status == _PagoState.paid
-                    ? Icons.check_circle
-                    : Icons.receipt_long,
+                    ? IconsRounded.check_circle
+                    : IconsRounded.receipt_long,
                 color: statusColor,
               ),
             ),
@@ -234,12 +238,11 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen> {
                 if (hasDoc)
                   TextButton.icon(
                     onPressed: () => _openDocument(context, pago),
-                    icon: const Icon(Icons.picture_as_pdf, size: 16),
+                    icon: const Icon(IconsRounded.picture_as_pdf, size: 16),
                     label: const Text('Documento'),
                     style: TextButton.styleFrom(
-                      padding: EdgeInsets.zero,
-                      minimumSize: const Size(0, 32),
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      minimumSize: const Size(44, 36),
                     ),
                   )
                 else

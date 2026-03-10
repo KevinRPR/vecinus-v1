@@ -122,7 +122,7 @@ class SecurityService {
                     const SizedBox(height: 6),
                     Text(
                       step == 0
-                          ? 'Crea un PIN de 4 digitos para acceder rapido.'
+                          ? 'Crea un PIN de 4 dígitos para acceder rápido.'
                           : 'Repite tu PIN para confirmar.',
                       style: TextStyle(fontSize: 12, color: muted),
                     ),

@@ -105,11 +105,11 @@ function change_password(PDO $conn, int $userId, array $input): void {
     $new = $input['password_nueva'] ?? '';
 
     if (!$current || !$new) {
-        throw new Exception("Debe indicar contrasena actual y nueva.");
+        throw new Exception("Debe indicar contraseña actual y nueva.");
     }
 
     if (strlen($new) < 6) {
-        throw new Exception("La nueva contrasena debe tener al menos 6 caracteres.");
+        throw new Exception("La nueva contraseña debe tener al menos 6 caracteres.");
     }
 
     $stmt = $conn->prepare("
@@ -127,7 +127,7 @@ function change_password(PDO $conn, int $userId, array $input): void {
     $modernOk = $isModern ? password_verify($current, $stored) : false;
 
     if (!$legacyOk && !$modernOk) {
-        throw new Exception("La contrasena actual no es valida.");
+        throw new Exception("La contraseña actual no es válida.");
     }
 
     $newHash = password_hash($new, PASSWORD_DEFAULT);

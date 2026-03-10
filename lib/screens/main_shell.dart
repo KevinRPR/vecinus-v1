@@ -233,7 +233,9 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
     await AuthService.logout();
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Tu sesion expiro. Inicia sesion nuevamente.')),
+      const SnackBar(
+        content: Text('Tu sesión expiró. Inicia sesión nuevamente.'),
+      ),
     );
     Navigator.of(context).pushAndRemoveUntil(
       fadeSlideRoute(const LoginScreen()),

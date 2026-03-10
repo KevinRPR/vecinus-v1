@@ -145,7 +145,7 @@ class _PaymentDetailScreenState extends State<PaymentDetailScreen> {
       final hasReportes = _reportes.isNotEmpty;
       return AppEmptyState(
         icon: IconsRounded.receipt_long,
-        title: 'Todo al dia por ahora.',
+        title: 'Todo al día por ahora.',
         subtitle: 'Si aparece una cuota, la veras aqui.',
         actionLabel: hasReportes ? 'Ver pagos reportados' : 'Actualizar',
         onAction:
@@ -381,7 +381,6 @@ class _PaymentDetailScreenState extends State<PaymentDetailScreen> {
                       style: TextButton.styleFrom(
                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                         minimumSize: const Size(44, 36),
-                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                       ),
                     ),
                   ),

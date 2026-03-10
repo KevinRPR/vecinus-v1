@@ -145,11 +145,11 @@ class _UserScreenState extends State<UserScreen> {
     final confirm = _passwordConfirmController.text;
 
     if (actual.isEmpty || nueva.isEmpty || confirm.isEmpty) {
-      _showSnack('Completa todos los campos de contrasena.');
+      _showSnack('Completa todos los campos de contraseña.');
       return false;
     }
     if (nueva.length < 6) {
-      _showSnack('La contrasena nueva debe tener al menos 6 caracteres.');
+      _showSnack('La contraseña nueva debe tener al menos 6 caracteres.');
       return false;
     }
     if (nueva != confirm) {
@@ -162,7 +162,7 @@ class _UserScreenState extends State<UserScreen> {
       context: context,
       useBiometrics: securityPrefs.biometricForSensitive,
       usePin: securityPrefs.pinForSensitive,
-      reason: 'Confirma tu identidad para cambiar la contrasena.',
+      reason: 'Confirma tu identidad para cambiar la contraseña.',
     );
     if (!allowed) {
       _showSnack('No se pudo verificar tu identidad.');
@@ -182,7 +182,7 @@ class _UserScreenState extends State<UserScreen> {
       _showSnack('Contrasena actualizada correctamente.');
       return true;
     } catch (e) {
-      _showSnack('No se pudo actualizar la contrasena: $e');
+      _showSnack('No se pudo actualizar la contraseña: $e');
       return false;
     } finally {
       setState(() => _changingPassword = false);
@@ -249,10 +249,11 @@ class _UserScreenState extends State<UserScreen> {
       appBar: AppBar(
         title: const Text('Mi perfil'),
         automaticallyImplyLeading: !widget.embedded,
-        leading: widget.embedded
+          leading: widget.embedded
             ? null
             : IconButton(
                 icon: const Icon(IconsRounded.arrow_back),
+                tooltip: 'Volver',
                 onPressed: () {
                   final user = _user ?? widget.user;
                   widget.onUserUpdated?.call(user);
@@ -518,7 +519,7 @@ class _UserScreenState extends State<UserScreen> {
                 iconColor: AppColors.brandTeal600,
                 iconBackground: AppColors.brandTeal600.withValues(alpha: 0.12),
                 title: 'Seguridad',
-                subtitle: 'Cambiar contrasena, 2FA',
+                subtitle: 'Cambiar contraseña, 2FA',
                 showDivider: true,
                 dividerColor: borderColor,
                 onTap: _openSecuritySheet,
@@ -527,7 +528,7 @@ class _UserScreenState extends State<UserScreen> {
                 icon: IconsRounded.logout,
                 iconColor: AppColors.error,
                 iconBackground: AppColors.error.withValues(alpha: 0.12),
-                title: 'Cerrar sesion',
+                title: 'Cerrar sesión',
                 showChevron: false,
                 isDestructive: true,
                 dividerColor: borderColor,
@@ -962,7 +963,7 @@ class _UserScreenState extends State<UserScreen> {
                           _sectionMiniTitle('Tipos', muted),
                           _buildSwitchTile(
                             title: 'Avisos',
-                            subtitle: 'Comunicados de administracion.',
+                            subtitle: 'Comunicados de administración.',
                             value: prefs.notifications.avisos,
                             onChanged: (value) {
                               preferencesController.updateWith(
@@ -1047,7 +1048,7 @@ class _UserScreenState extends State<UserScreen> {
                           const Divider(height: 1),
                           _buildSwitchTile(
                             title: 'WhatsApp',
-                            subtitle: 'Mensajes rapidos al celular.',
+                            subtitle: 'Mensajes rápidos al celular.',
                             value: prefs.notifications.whatsapp,
                             onChanged: (value) {
                               preferencesController.updateWith(
@@ -1264,7 +1265,7 @@ class _UserScreenState extends State<UserScreen> {
                       ),
                     ),
                     const SizedBox(height: 16),
-                    _sheetSectionTitle('Acceso rapido', muted),
+                    _sheetSectionTitle('Acceso rápido', muted),
                     const SizedBox(height: 8),
                     _sheetCard(
                       cardColor: cardColor,
@@ -1273,7 +1274,7 @@ class _UserScreenState extends State<UserScreen> {
                         children: [
                           _buildSwitchTile(
                             title: 'Biometria para entrar',
-                            subtitle: 'Huella o Face ID al iniciar sesion.',
+                            subtitle: 'Huella o Face ID al iniciar sesión.',
                             value: security.biometricForLogin,
                             onChanged: (value) async {
                               if (value) {
@@ -1287,11 +1288,11 @@ class _UserScreenState extends State<UserScreen> {
                                 }
                                 final ok =
                                     await SecurityService.authenticateBiometric(
-                                  reason: 'Confirma biometria para activar.',
+                                  reason: 'Confirma biometría para activar.',
                                 );
                                 if (!ok) {
                                   _showSnack(
-                                    'No se pudo verificar tu biometria.',
+                                    'No se pudo verificar tu biometría.',
                                   );
                                   return;
                                 }
@@ -1309,7 +1310,7 @@ class _UserScreenState extends State<UserScreen> {
                           const Divider(height: 1),
                           _buildSwitchTile(
                             title: 'Biometria para acciones sensibles',
-                            subtitle: 'Pagos y cambios de contrasena.',
+                            subtitle: 'Pagos y cambios de contraseña.',
                             value: security.biometricForSensitive,
                             onChanged: (value) async {
                               if (value) {
@@ -1323,11 +1324,11 @@ class _UserScreenState extends State<UserScreen> {
                                 }
                                 final ok =
                                     await SecurityService.authenticateBiometric(
-                                  reason: 'Confirma biometria para activar.',
+                                  reason: 'Confirma biometría para activar.',
                                 );
                                 if (!ok) {
                                   _showSnack(
-                                    'No se pudo verificar tu biometria.',
+                                    'No se pudo verificar tu biometría.',
                                   );
                                   return;
                                 }
@@ -1345,7 +1346,7 @@ class _UserScreenState extends State<UserScreen> {
                           const Divider(height: 1),
                           _buildSwitchTile(
                             title: 'PIN para entrar',
-                            subtitle: 'Solicitar PIN al iniciar sesion.',
+                            subtitle: 'Solicitar PIN al iniciar sesión.',
                             value: security.pinForLogin,
                             onChanged: (value) async {
                               if (value) {
@@ -1373,7 +1374,7 @@ class _UserScreenState extends State<UserScreen> {
                           const Divider(height: 1),
                           _buildSwitchTile(
                             title: 'PIN para acciones sensibles',
-                            subtitle: 'Pagos y cambios de contrasena.',
+                            subtitle: 'Pagos y cambios de contraseña.',
                             value: security.pinForSensitive,
                             onChanged: (value) async {
                               if (value) {
@@ -1418,14 +1419,14 @@ class _UserScreenState extends State<UserScreen> {
                             obscure: true,
                           ),
                           const SizedBox(height: 12),
-                          _buildInputLabel('Nueva contrasena'),
+                          _buildInputLabel('Nueva contraseña'),
                           _buildTextField(
                             _passwordNuevaController,
                             TextInputType.visiblePassword,
                             obscure: true,
                           ),
                           const SizedBox(height: 12),
-                          _buildInputLabel('Confirmar contrasena'),
+                          _buildInputLabel('Confirmar contraseña'),
                           _buildTextField(
                             _passwordConfirmController,
                             TextInputType.visiblePassword,
@@ -1465,7 +1466,7 @@ class _UserScreenState extends State<UserScreen> {
                                       ),
                                     )
                                   : const Text(
-                                      'Actualizar contrasena',
+                                      'Actualizar contraseña',
                                       style: TextStyle(
                                         fontWeight: FontWeight.w700,
                                       ),
@@ -1537,7 +1538,7 @@ class _UserScreenState extends State<UserScreen> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Contacta a la administracion de tu condominio para recibir ayuda.',
+                  'Contacta a la administración de tu condominio para recibir ayuda.',
                   style: TextStyle(
                     fontSize: 12,
                     height: 1.4,

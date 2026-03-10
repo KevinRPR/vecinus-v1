@@ -3,6 +3,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 
 import '../animations/shimmers.dart';
+import '../animations/transitions.dart';
 import '../models/inmueble.dart';
 import '../preferences_controller.dart';
 import '../services/security_service.dart';
@@ -87,6 +88,7 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
         final borderColor = scheme.outline;
         final textMuted = theme.textTheme.bodySmall?.color?.withValues(alpha: 0.7) ??
             (isDark ? AppColors.darkTextMuted : AppColors.textMuted);
+        final inmuebles = widget.inmuebles;
         final sectionItems = _buildSectionItems(_filteredInmuebles);
         final reduceEffects = AppPerf.reduceEffects(context);
 
@@ -94,89 +96,92 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
           backgroundColor: background,
           body: RefreshIndicator(
             onRefresh: widget.onRefresh,
-            child: CustomScrollView(
-              physics: const AlwaysScrollableScrollPhysics(),
-              slivers: [
-                SliverPersistentHeader(
-                  pinned: true,
-                  delegate: _PaymentsHeaderDelegate(
-                    isDark: isDark,
-                    topPadding: topPadding,
-                    inmuebleCount: widget.inmuebles.length,
-                    onOpenHelp: () => _openHelp(context),
-                  ),
-                ),
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-                    child: _summaryCard(
+            child: FadeSlideTransition(
+              beginOffset: const Offset(0, 0.02),
+              child: CustomScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                slivers: [
+                  SliverPersistentHeader(
+                    pinned: true,
+                    delegate: _PaymentsHeaderDelegate(
                       isDark: isDark,
-                      cardColor: cardColor,
-                      surfaceAlt: surfaceAlt,
-                      borderColor: borderColor,
-                      textMuted: textMuted,
-                      reduceEffects: reduceEffects,
+                      topPadding: topPadding,
+                      inmuebleCount: inmuebles.length,
+                      onOpenHelp: () => _openHelp(context),
                     ),
                   ),
-                ),
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
-                    child: _filterChips(),
-                  ),
-                ),
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 20, 20, 8),
-                    child: Text(
-                      'Detalle por inmueble',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 1.4,
-                        color: textMuted,
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+                      child: _summaryCard(
+                        isDark: isDark,
+                        cardColor: cardColor,
+                        surfaceAlt: surfaceAlt,
+                        borderColor: borderColor,
+                        textMuted: textMuted,
+                        reduceEffects: reduceEffects,
                       ),
                     ),
                   ),
-                ),
-                if (widget.loading && widget.inmuebles.isEmpty)
-                  SliverToBoxAdapter(child: _loadingSkeleton())
-                else ...[
-                  if (_filteredInmuebles.isEmpty)
-                    SliverToBoxAdapter(
-                      child: _buildEmptyState(),
-                    )
-                  else
-                    SliverList(
-                      delegate: SliverChildBuilderDelegate(
-                        (context, index) {
-                          final item = sectionItems[index];
-                          if (item.isHeader) {
-                            return _buildSectionHeader(
-                              item.header!,
-                              textMuted,
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+                      child: _filterChips(),
+                    ),
+                  ),
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 20, 20, 8),
+                      child: Text(
+                        'Detalle por inmueble',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 1.4,
+                          color: textMuted,
+                        ),
+                      ),
+                    ),
+                  ),
+                  if (widget.loading && inmuebles.isEmpty)
+                    SliverToBoxAdapter(child: _loadingSkeleton())
+                  else ...[
+                    if (_filteredInmuebles.isEmpty)
+                      SliverToBoxAdapter(
+                        child: _buildEmptyState(),
+                      )
+                    else
+                      SliverList(
+                        delegate: SliverChildBuilderDelegate(
+                          (context, index) {
+                            final item = sectionItems[index];
+                            if (item.isHeader) {
+                              return _buildSectionHeader(
+                                item.header!,
+                                textMuted,
+                              );
+                            }
+                            return Padding(
+                              padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+                              child: _inmuebleCard(
+                                context,
+                                item.inmueble!,
+                                isDark: isDark,
+                                cardColor: cardColor,
+                                borderColor: borderColor,
+                                textMuted: textMuted,
+                                reduceEffects: reduceEffects,
+                              ),
                             );
-                          }
-                          return Padding(
-                            padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
-                            child: _inmuebleCard(
-                              context,
-                              item.inmueble!,
-                              isDark: isDark,
-                              cardColor: cardColor,
-                              borderColor: borderColor,
-                              textMuted: textMuted,
-                              reduceEffects: reduceEffects,
-                            ),
-                          );
-                        },
-                        childCount: sectionItems.length,
+                          },
+                          childCount: sectionItems.length,
+                        ),
                       ),
-                    ),
+                  ],
+                  SliverToBoxAdapter(child: _buildPayNowBar()),
+                  const SliverToBoxAdapter(child: SizedBox(height: 24)),
                 ],
-                SliverToBoxAdapter(child: _buildPayNowBar()),
-                const SliverToBoxAdapter(child: SizedBox(height: 24)),
-              ],
+              ),
             ),
           ),
         );
@@ -198,7 +203,7 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
     final allPaid = pendingCount == 0 && totalCount > 0;
     final statusLabel = totalCount == 0
         ? 'Sin inmuebles'
-        : (allPaid ? 'Cuentas al dia' : '$pendingCount con deuda');
+        : (allPaid ? 'Cuentas al día' : '$pendingCount con deuda');
     final statusIcon = allPaid ? IconsRounded.check : IconsRounded.warning_rounded;
     final statusColor = allPaid ? AppColors.success : AppColors.warning;
 
@@ -367,20 +372,20 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
     VoidCallback? onAction;
 
     if (!hasInmuebles) {
-      title = 'Aun no tienes inmuebles.';
-      subtitle = 'Cuando agregues uno, veras sus pagos aqui.';
+      title = 'Aún no tienes inmuebles.';
+      subtitle = 'Cuando agregues uno, verás sus pagos aquí.';
       actionLabel = 'Actualizar';
       onAction = () => widget.onRefresh();
     } else {
       switch (_filter) {
         case _PaymentFilter.pending:
           title = 'Sin deudas pendientes.';
-          subtitle = 'Todo esta al dia por ahora.';
+          subtitle = 'Todo está al día por ahora.';
           actionLabel = 'Ver todos';
           onAction = () => setState(() => _filter = _PaymentFilter.all);
           break;
         case _PaymentFilter.paid:
-          title = 'Aun no hay pagos al dia.';
+          title = 'Aún no hay pagos al día.';
           subtitle = 'Revisa los pendientes para ver lo que falta.';
           actionLabel = 'Ver pendientes';
           onAction = () => setState(() => _filter = _PaymentFilter.pending);
@@ -569,9 +574,8 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
                   TextButton.icon(
                     onPressed: () => _openPaymentDetail(context, inmueble),
                     style: TextButton.styleFrom(
-                      padding: EdgeInsets.zero,
-                      minimumSize: const Size(0, 0),
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      minimumSize: const Size(44, 36),
                       foregroundColor: Theme.of(context).colorScheme.primary,
                     ),
                     icon: const Icon(IconsRounded.chevron_right, size: 16),
@@ -595,7 +599,7 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
     final hasPending = widget.inmuebles.any((i) => !_sinDeuda(i));
     final canPay = !isLoading && hasPending;
     final buttonLabel =
-        isLoading ? 'Cargando...' : (hasPending ? 'Pagar ahora' : 'Al dia');
+        isLoading ? 'Cargando...' : (hasPending ? 'Pagar ahora' : 'Al día');
     final buttonIcon = isLoading
         ? IconsRounded.hourglass_empty
         : (hasPending
@@ -797,7 +801,10 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
     }
   }
 
-  Future<void> _openPaymentDetail(BuildContext context, Inmueble inmueble) async {
+  Future<void> _openPaymentDetail(
+    BuildContext context,
+    Inmueble inmueble,
+  ) async {
     await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => PaymentDetailScreen(

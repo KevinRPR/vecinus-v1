@@ -19,7 +19,7 @@ class ApiAuthException implements Exception {
 
 class ApiService {
   static const String _defaultBaseUrl =
-      'https://rhodiumdev.com/condominio/movil/';
+      'https://mail.rhodiumdev.com/condominio/movil/';
   static final String baseUrl = _normalizeBaseUrl(
     const String.fromEnvironment(
       'API_BASE_URL',
@@ -34,8 +34,12 @@ class ApiService {
   static Map<String, String> get _headers =>
       const {'Content-Type': 'application/json'};
   static const Duration _timeout = Duration(seconds: 15);
+  static const Duration _retryDelay = Duration(milliseconds: 350);
+  static const int _maxAttempts = 2;
   static const String _noConnectionMessage =
-      'No hay conexion, intenta de nuevo.';
+      'No hay conexión, intenta de nuevo.';
+  static const String _secureConnectionMessage =
+      'No se pudo establecer conexión segura con el servidor.';
 
   static String _normalizeBaseUrl(String raw) {
     final trimmed = raw.trim();
@@ -47,18 +51,31 @@ class ApiService {
     String path,
     Map<String, dynamic> payload,
   ) async {
-    try {
-      return await http
-          .post(
-            _uri(path),
-            headers: _headers,
-            body: jsonEncode(payload),
-          )
-          .timeout(_timeout);
-    } on TimeoutException {
-      throw Exception(_noConnectionMessage);
-    } on SocketException {
-      throw Exception(_noConnectionMessage);
+    var attempt = 0;
+    while (true) {
+      try {
+        return await http
+            .post(
+              _uri(path),
+              headers: _headers,
+              body: jsonEncode(payload),
+            )
+            .timeout(_timeout);
+      } on TimeoutException {
+        attempt += 1;
+        if (attempt >= _maxAttempts) {
+          throw Exception(_noConnectionMessage);
+        }
+        await Future<void>.delayed(_retryDelay);
+      } on SocketException {
+        attempt += 1;
+        if (attempt >= _maxAttempts) {
+          throw Exception(_noConnectionMessage);
+        }
+        await Future<void>.delayed(_retryDelay);
+      } on HandshakeException {
+        throw Exception(_secureConnectionMessage);
+      }
     }
   }
 

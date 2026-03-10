@@ -272,7 +272,7 @@ try {
             respond_error("Debe incluir al menos una notificacion a pagar.", 400);
         }
         if (!is_array($pagos) || empty($pagos)) {
-            respond_error("Debe incluir al menos un metodo de pago.", 400);
+            respond_error("Debe incluir al menos un método de pago.", 400);
         }
 
         // Idempotencia
@@ -329,7 +329,7 @@ try {
             $monto = (float)($p["monto"] ?? 0);
             $idMon = (int)($p["id_moneda"] ?? 0);
             if ($monto <= 0 || $idMon <= 0) {
-                respond_error("Los metodos de pago deben tener monto y moneda.", 400);
+                respond_error("Los métodos de pago deben tener monto y moneda.", 400);
             }
             $tasa = (float)($p["tasa"] ?? get_tasa($conn, $idMon, $idMonedaBase));
             if ($tasa <= 0) $tasa = 1;

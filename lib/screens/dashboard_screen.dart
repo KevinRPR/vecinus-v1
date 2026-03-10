@@ -55,6 +55,7 @@ class DashboardScreen extends StatelessWidget {
     final cardColor = theme.cardColor;
     final borderColor = theme.colorScheme.outline;
     final shadowColor = Colors.black.withValues(alpha: isDark ? 0.35 : 0.06);
+    final reduceEffects = AppPerf.reduceEffects(context);
     final textMuted =
         theme.textTheme.bodySmall?.color?.withValues(alpha: 0.7) ??
             (isDark ? AppColors.darkTextMuted : AppColors.textMuted);
@@ -77,6 +78,7 @@ class DashboardScreen extends StatelessWidget {
           textMuted: textMuted,
           textStrong: textStrong,
           isDark: isDark,
+          reduceEffects: reduceEffects,
         );
         final breakdownCard = _buildDebtBreakdownCard(
           cardColor: cardColor,
@@ -84,6 +86,7 @@ class DashboardScreen extends StatelessWidget {
           shadowColor: shadowColor,
           textMuted: textMuted,
           textStrong: textStrong,
+          reduceEffects: reduceEffects,
         );
         final statusSection = Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -103,6 +106,7 @@ class DashboardScreen extends StatelessWidget {
           textMuted: textMuted,
           textStrong: textStrong,
           isDark: isDark,
+          reduceEffects: reduceEffects,
         );
         final activitySection = _buildRecentActivitySection(
           cardColor: cardColor,
@@ -111,6 +115,7 @@ class DashboardScreen extends StatelessWidget {
           textMuted: textMuted,
           textStrong: textStrong,
           isDark: isDark,
+          reduceEffects: reduceEffects,
         );
         final cards = prefs.inmueble.cardOrder ==
                 DashboardCardOrder.announcementsFirst
@@ -186,13 +191,14 @@ class DashboardScreen extends StatelessWidget {
     required Color textMuted,
     required Color textStrong,
     required bool isDark,
+    required bool reduceEffects,
   }) {
     final totalDeuda = _totalDeuda;
     final isAlDia = totalDeuda <= 0;
     final inmuebleCount = inmuebles.length;
     final pendingCount =
         inmuebleCount - inmuebles.where((item) => _parseMonto(item.deudaActual) <= 0).length;
-    final title = isAlDia ? 'Estas al dia' : 'Deuda total';
+    final title = isAlDia ? 'Estás al día' : 'Deuda total';
     final subtitle = isAlDia
         ? 'Sin deudas pendientes'
         : '$pendingCount con deuda';
@@ -205,6 +211,7 @@ class DashboardScreen extends StatelessWidget {
       borderColor: borderColor,
       shadowColor: shadowColor,
       padding: const EdgeInsets.all(18),
+      reduceEffects: reduceEffects,
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
@@ -274,6 +281,7 @@ class DashboardScreen extends StatelessWidget {
     required Color textMuted,
     required Color textStrong,
     required bool isDark,
+    required bool reduceEffects,
   }) {
     final totalAlerts = NotificationService.all().length;
     final newLabel =
@@ -315,6 +323,7 @@ class DashboardScreen extends StatelessWidget {
             textMuted: textMuted,
             textStrong: textStrong,
             isDark: isDark,
+            reduceEffects: reduceEffects,
           )
         else
           Column(
@@ -329,6 +338,7 @@ class DashboardScreen extends StatelessWidget {
                   textStrong: textStrong,
                   onTap: onViewAlerts,
                   isDark: isDark,
+                  reduceEffects: reduceEffects,
                 ),
                 if (i != highlights.length - 1)
                   const SizedBox(height: 12),
@@ -343,6 +353,7 @@ class DashboardScreen extends StatelessWidget {
           textMuted: textMuted,
           textStrong: textStrong,
           isDark: isDark,
+          reduceEffects: reduceEffects,
           onParticipate: () {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(content: Text('Disponible pronto.')),
@@ -377,6 +388,7 @@ class DashboardScreen extends StatelessWidget {
     required Color shadowColor,
     required Color textMuted,
     required Color textStrong,
+    required bool reduceEffects,
   }) {
     if (inmuebles.isEmpty) return null;
 
@@ -390,6 +402,7 @@ class DashboardScreen extends StatelessWidget {
       borderColor: borderColor,
       shadowColor: shadowColor,
       padding: const EdgeInsets.all(16),
+      reduceEffects: reduceEffects,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -516,6 +529,7 @@ class DashboardScreen extends StatelessWidget {
     required Color textStrong,
     required VoidCallback onTap,
     required bool isDark,
+    required bool reduceEffects,
   }) {
     final iconColor = _kindColor(notification.kind);
     final icon = _kindIcon(notification.kind);
@@ -527,6 +541,7 @@ class DashboardScreen extends StatelessWidget {
       borderColor: borderColor,
       shadowColor: shadowColor,
       padding: const EdgeInsets.all(14),
+      reduceEffects: reduceEffects,
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -583,12 +598,14 @@ class DashboardScreen extends StatelessWidget {
     required Color textMuted,
     required Color textStrong,
     required bool isDark,
+    required bool reduceEffects,
   }) {
     return _glassCard(
       color: cardColor,
       borderColor: borderColor,
       shadowColor: shadowColor,
       padding: const EdgeInsets.all(14),
+      reduceEffects: reduceEffects,
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -620,7 +637,7 @@ class DashboardScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'Si aparece una alerta, la veras aqui.',
+                  'Si aparece una alerta, la verás aquí.',
                   style: TextStyle(fontSize: 12, color: textMuted),
                 ),
               ],
@@ -639,12 +656,14 @@ class DashboardScreen extends StatelessWidget {
     required Color textStrong,
     required bool isDark,
     required VoidCallback onParticipate,
+    required bool reduceEffects,
   }) {
     return _glassCard(
       color: cardColor,
       borderColor: borderColor,
       shadowColor: shadowColor,
       padding: const EdgeInsets.all(14),
+      reduceEffects: reduceEffects,
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -667,7 +686,7 @@ class DashboardScreen extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Tu opinion construye comunidad',
+                  'Tu opinión construye comunidad',
                   style: TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w700,
@@ -676,7 +695,7 @@ class DashboardScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'Nueva votacion disponible para el color de la fachada.',
+                  'Nueva votación disponible para el color de la fachada.',
                   style: TextStyle(fontSize: 12, color: textMuted),
                 ),
                 const SizedBox(height: 10),
@@ -715,6 +734,7 @@ class DashboardScreen extends StatelessWidget {
     required Color textMuted,
     required Color textStrong,
     required bool isDark,
+    required bool reduceEffects,
   }) {
     final recent = NotificationService.all().toList()
       ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
@@ -748,6 +768,7 @@ class DashboardScreen extends StatelessWidget {
           borderColor: borderColor,
           shadowColor: shadowColor,
           padding: const EdgeInsets.all(14),
+          reduceEffects: reduceEffects,
           child: items.isEmpty
               ? SizedBox(
                   height: 104,
@@ -784,7 +805,7 @@ class DashboardScreen extends StatelessWidget {
                             ),
                             const SizedBox(height: 4),
                             Text(
-                              'Aparecera cuando haya movimientos.',
+                              'Aparecerá cuando haya movimientos.',
                               style: TextStyle(
                                 fontSize: 12,
                                 color: textMuted,
@@ -942,6 +963,7 @@ class DashboardScreen extends StatelessWidget {
     required Color shadowColor,
     EdgeInsets? padding,
     double radius = 16,
+    required bool reduceEffects,
   }) {
     return ClipRRect(
       borderRadius: BorderRadius.circular(radius),
@@ -951,13 +973,15 @@ class DashboardScreen extends StatelessWidget {
           color: color,
           borderRadius: BorderRadius.circular(radius),
           border: Border.all(color: borderColor),
-          boxShadow: [
-            BoxShadow(
-              color: shadowColor,
-              blurRadius: 24,
-              offset: const Offset(0, 10),
-            ),
-          ],
+          boxShadow: reduceEffects
+              ? const []
+              : [
+                  BoxShadow(
+                    color: shadowColor,
+                    blurRadius: 24,
+                    offset: const Offset(0, 10),
+                  ),
+                ],
         ),
         child: child,
       ),

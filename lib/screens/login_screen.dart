@@ -205,7 +205,7 @@ class _LoginScreenState extends State<LoginScreen> {
       case _QuickAccessAction.biometrics:
         if (canBiometrics) {
           final ok = await SecurityService.authenticateBiometric(
-            reason: 'Activa el acceso rapido con biometria.',
+            reason: 'Activa el acceso rápido con biometría.',
           );
           if (ok) {
             AppHaptics.impact();
@@ -268,14 +268,14 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
                 const SizedBox(height: 12),
                 Text(
-                  'Acceso rapido',
+                  'Acceso rápido',
                   style: theme.textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.w700,
                   ),
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  'Entra mas rapido con huella, Face ID o un PIN.',
+                  'Entra más rápido con huella, Face ID o un PIN.',
                   style: theme.textTheme.bodySmall?.copyWith(color: muted),
                 ),
                 const SizedBox(height: 12),
@@ -285,7 +285,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     leading: const Icon(Icons.fingerprint),
                     title: const Text('Usar huella o Face ID'),
                     subtitle: Text(
-                      'Autentica con biometria en tu proximo acceso.',
+                      'Autentica con biometría en tu próximo acceso.',
                       style: TextStyle(fontSize: 12, color: muted),
                     ),
                     onTap: () => Navigator.of(sheetContext)
@@ -296,7 +296,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   leading: const Icon(IconsRounded.pin),
                   title: const Text('Configurar PIN'),
                   subtitle: Text(
-                    'Accede con un PIN de 4 digitos.',
+                    'Accede con un PIN de 4 dígitos.',
                     style: TextStyle(fontSize: 12, color: muted),
                   ),
                   onTap: () =>
@@ -427,7 +427,7 @@ class _LoginScreenState extends State<LoginScreen> {
       actions.add(
         _SupportAction(
           label: 'Centro de ayuda',
-          icon: Icons.support_agent,
+          icon: IconsRounded.support_agent,
           uri: urlLink,
         ),
       );
@@ -483,7 +483,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       contentPadding: EdgeInsets.zero,
                       leading: Icon(action.icon, color: _primary),
                       title: Text(action.label),
-                      trailing: const Icon(Icons.chevron_right),
+                      trailing: const Icon(IconsRounded.chevron_right),
                       onTap: () {
                         Navigator.of(sheetContext).pop();
                         _launchSupport(action.uri);
@@ -985,8 +985,7 @@ class _LoginScreenState extends State<LoginScreen> {
             ),
             style: TextButton.styleFrom(
               padding: EdgeInsets.zero,
-              minimumSize: const Size(0, 30),
-              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              minimumSize: const Size(44, 36),
             ),
             child: Text(
               'Cómo cuidamos tu comunidad',
@@ -1040,7 +1039,7 @@ class _LoginScreenState extends State<LoginScreen> {
             message: 'Cuéntanos qué problema tienes y te ayudamos a resolverlo.',
             subject: 'Ayuda de acceso - Vecinus',
           ),
-          icon: Icon(Icons.help_outline, size: 18, color: linkColor),
+          icon: Icon(IconsRounded.help_outline, size: 18, color: linkColor),
           label: Text(
             '¿Necesitas ayuda?',
             style: _interStyle(

@@ -26,7 +26,7 @@ $email = trim($input['email'] ?? '');
 $password = trim($input['password'] ?? '');
 
 if ($email === '' || $password === '') {
-    respond_error("Correo y contrasena son requeridos.", 400);
+    respond_error("Correo y contraseña son requeridos.", 400);
 }
 
 $ip = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';

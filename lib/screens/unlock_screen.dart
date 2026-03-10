@@ -84,7 +84,7 @@ class _UnlockScreenState extends State<UnlockScreen> {
       _loading = false;
       _pinReset += 1;
       _error = widget.security.pinForLogin
-          ? 'No se pudo verificar la biometria. Ingresa tu PIN.'
+          ? 'No se pudo verificar la biometría. Ingresa tu PIN.'
           : 'No se pudo verificar tu identidad.';
     });
   }
@@ -101,7 +101,7 @@ class _UnlockScreenState extends State<UnlockScreen> {
     setState(() {
       _error = _pinAvailable
           ? 'PIN incorrecto.'
-          : 'PIN no configurado. Ingresa con contrasena para configurarlo.';
+          : 'PIN no configurado. Ingresa con contraseña para configurarlo.';
       _pinReset += 1;
     });
   }
@@ -267,7 +267,7 @@ class _UnlockScreenState extends State<UnlockScreen> {
                         ),
                         const SizedBox(height: 8),
                         Text(
-                          'Entra con contrasena para volver a configurarlo.',
+                          'Entra con contraseña para volver a configurarlo.',
                           textAlign: TextAlign.center,
                           style: theme.textTheme.bodySmall?.copyWith(color: muted),
                         ),
@@ -287,11 +287,11 @@ class _UnlockScreenState extends State<UnlockScreen> {
                       const SizedBox(height: 16),
                       TextButton(
                         onPressed: _loading ? null : _usePassword,
-                        child: const Text('Usar contrasena'),
+                        child: const Text('Usar contraseña'),
                       ),
                       TextButton(
                         onPressed: _loading ? null : _resetQuickAccess,
-                        child: const Text('Restablecer acceso rapido'),
+                        child: const Text('Restablecer acceso rápido'),
                       ),
                     ],
                   ),

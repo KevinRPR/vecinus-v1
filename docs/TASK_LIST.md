@@ -15,16 +15,16 @@
 - [ ] QA matrix: low/mid/high devices + Chrome/Safari.
 
 ### Stage 1 - Premium UX polish
-- [ ] Fix mojibake strings and copy consistency.
-- [ ] Unify icon family and spacing across web + mobile.
-- [ ] Add skeletons and empty states to critical lists.
-- [ ] Add accessibility labels + 44dp targets for icon-only.
-- [ ] Apply motion spec to key screens (transitions + feedback).
+- [x] Fix mojibake strings and copy consistency.
+- [x] Unify icon family and spacing across web + mobile.
+- [x] Add skeletons and empty states to critical lists.
+- [x] Add accessibility labels + 44dp targets for icon-only.
+- [x] Apply motion spec to key screens (transitions + feedback).
 
 ### Stage 2 - Reliability and performance
-- [ ] Improve report payment flow (prefill, validation, idempotency).
-- [ ] Optimize list rendering and caching (large data sets).
-- [ ] Reduce heavy blur/shadows on low-end devices.
+- [x] Improve report payment flow (prefill, validation, idempotency).
+- [x] Optimize list rendering and caching (large data sets).
+- [x] Reduce heavy blur/shadows on low-end devices.
 
 ### Stage 3 - Trust and secure sessions
 - [ ] Refresh token end-to-end (server + client).

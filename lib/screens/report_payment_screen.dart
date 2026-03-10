@@ -1,8 +1,10 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/inmueble.dart';
 import '../services/api_service.dart';
@@ -44,8 +46,11 @@ class _ReportPaymentScreenState extends State<ReportPaymentScreen> {
   Map<String, dynamic>? _data;
   int? _selectedAccount;
   _ReportStep _step = _ReportStep.amount;
-  late final String _clientUuid;
+  late String _clientUuid;
   bool _payFull = true;
+  String? _amountError;
+  String? _referenceError;
+  Timer? _draftTimer;
 
   final TextEditingController _obsCtrl = TextEditingController();
   final TextEditingController _refCtrl = TextEditingController();
@@ -61,16 +66,23 @@ class _ReportPaymentScreenState extends State<ReportPaymentScreen> {
 
   static const int _maxEvidenceBytes = 2 * 1024 * 1024;
   static const List<String> _allowedEvidenceExt = ['jpg', 'jpeg', 'png'];
+  static const Duration _prepareCacheTtl = Duration(minutes: 10);
+  static const Duration _draftTtl = Duration(hours: 24);
+
+  String get _prepareCacheKey =>
+      'prepare_pago_${widget.inmueble.idInmueble}';
+  String get _draftCacheKey => 'report_draft_${widget.inmueble.idInmueble}';
 
   @override
   void initState() {
     super.initState();
     _clientUuid = ApiService.generateClientUuid();
-    _load();
+    _restoreDraft().then((_) => _load());
   }
 
   @override
   void dispose() {
+    _draftTimer?.cancel();
     _obsCtrl.dispose();
     _refCtrl.dispose();
     _montoUsdCtrl.dispose();
@@ -82,24 +94,193 @@ class _ReportPaymentScreenState extends State<ReportPaymentScreen> {
       _loading = true;
       _error = null;
     });
+
+    final cached = await _readPrepareCache();
+    if (cached != null && mounted) {
+      setState(() {
+        _data = cached;
+        _loading = false;
+        if (_payFull) {
+          _applyFullAmount();
+        }
+      });
+    }
+
+    await _fetchPrepare(showLoading: cached == null);
+  }
+
+  Future<void> _fetchPrepare({required bool showLoading}) async {
+    if (showLoading && mounted) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    }
     try {
       final loader = widget.prepareLoader ?? ApiService.preparePagoReporte;
       final res = await loader(
         token: widget.token,
         inmuebleId: widget.inmueble.idInmueble,
       );
+      final selectedAccount = _selectedAccount;
+      final accounts =
+          (res['cuentas'] as List?)?.cast<Map<String, dynamic>>() ?? [];
+      final isSelectedValid = selectedAccount != null &&
+          accounts.any((c) => c['id_cuenta'] == selectedAccount);
+      if (!mounted) return;
       setState(() {
         _data = res;
+        if (!isSelectedValid) {
+          _selectedAccount = null;
+        }
         _loading = false;
         if (_payFull) {
           _applyFullAmount();
         }
       });
+      await _writePrepareCache(res);
     } catch (e) {
-      setState(() {
-        _loading = false;
-        _error = e.toString();
-      });
+      if (!mounted) return;
+      if (showLoading) {
+        setState(() {
+          _loading = false;
+          _error = e.toString();
+        });
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('No se pudo actualizar la información del pago.'),
+          ),
+        );
+      }
+    }
+  }
+
+  void _scheduleDraftSave() {
+    _draftTimer?.cancel();
+    _draftTimer = Timer(
+      const Duration(milliseconds: 350),
+      _persistDraft,
+    );
+  }
+
+  Future<void> _restoreDraft() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_draftCacheKey);
+      if (raw == null || raw.isEmpty) return;
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map<String, dynamic>) return;
+      final fetchedAtRaw = decoded['fetchedAt'] as String?;
+      final fetchedAt =
+          fetchedAtRaw == null ? null : DateTime.tryParse(fetchedAtRaw);
+      if (fetchedAt == null ||
+          DateTime.now().difference(fetchedAt) > _draftTtl) {
+        await prefs.remove(_draftCacheKey);
+        return;
+      }
+
+      final storedUuid = decoded['clientUuid'] as String?;
+      final payFull = decoded['payFull'] as bool?;
+      final selectedAccount = decoded['selectedAccount'] as int?;
+      final monto = decoded['montoUsd'] as String?;
+      final fechaRaw = decoded['fechaPago'] as String?;
+      final obs = decoded['observacion'] as String?;
+      final referencia = decoded['referencia'] as String?;
+      final parsedFecha =
+          fechaRaw == null ? null : DateTime.tryParse(fechaRaw);
+
+      if (storedUuid != null && storedUuid.isNotEmpty) {
+        _clientUuid = storedUuid;
+      }
+      if (payFull != null) {
+        _payFull = payFull;
+      }
+      if (selectedAccount != null) {
+        _selectedAccount = selectedAccount;
+      }
+      if (monto != null) {
+        _montoUsdCtrl.text = monto;
+      }
+      if (parsedFecha != null) {
+        _fechaPago = parsedFecha;
+      }
+      if (obs != null) {
+        _obsCtrl.text = obs;
+      }
+      if (referencia != null) {
+        _refCtrl.text = referencia;
+      }
+
+      if (mounted) {
+        setState(() {});
+      }
+    } catch (_) {
+      // ignore draft restore errors
+    }
+  }
+
+  Future<void> _persistDraft() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final payload = {
+        'fetchedAt': DateTime.now().toIso8601String(),
+        'clientUuid': _clientUuid,
+        'payFull': _payFull,
+        'selectedAccount': _selectedAccount,
+        'montoUsd': _montoUsdCtrl.text,
+        'fechaPago': _fechaPago.toIso8601String(),
+        'observacion': _obsCtrl.text.trim(),
+        'referencia': _refCtrl.text.trim(),
+      };
+      await prefs.setString(_draftCacheKey, jsonEncode(payload));
+    } catch (_) {
+      // ignore cache errors
+    }
+  }
+
+  Future<void> _clearDraft() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_draftCacheKey);
+    } catch (_) {
+      // ignore cache errors
+    }
+  }
+
+  Future<Map<String, dynamic>?> _readPrepareCache() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_prepareCacheKey);
+      if (raw == null || raw.isEmpty) return null;
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map<String, dynamic>) return null;
+      final fetchedAtRaw = decoded['fetchedAt'] as String?;
+      final payload = decoded['payload'];
+      final fetchedAt =
+          fetchedAtRaw == null ? null : DateTime.tryParse(fetchedAtRaw);
+      if (fetchedAt == null ||
+          DateTime.now().difference(fetchedAt) > _prepareCacheTtl ||
+          payload is! Map<String, dynamic>) {
+        await prefs.remove(_prepareCacheKey);
+        return null;
+      }
+      return payload;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _writePrepareCache(Map<String, dynamic> payload) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final data = {
+        'fetchedAt': DateTime.now().toIso8601String(),
+        'payload': payload,
+      };
+      await prefs.setString(_prepareCacheKey, jsonEncode(data));
+    } catch (_) {
+      // ignore cache errors
     }
   }
 
@@ -162,6 +343,8 @@ class _ReportPaymentScreenState extends State<ReportPaymentScreen> {
     } else {
       _montoUsdCtrl.clear();
     }
+    _amountError = null;
+    _scheduleDraftSave();
   }
 
   void _changePayMode(bool payFull) {
@@ -171,12 +354,20 @@ class _ReportPaymentScreenState extends State<ReportPaymentScreen> {
         _applyFullAmount();
       } else {
         _montoUsdCtrl.clear();
+        _amountError = null;
       }
     });
+    if (!_payFull) {
+      _scheduleDraftSave();
+    }
   }
 
   void _onAmountChanged() {
-    setState(() {});
+    if (!mounted) return;
+    setState(() {
+      _amountError = null;
+    });
+    _scheduleDraftSave();
   }
 
   void _goToAmount() {
@@ -188,29 +379,40 @@ class _ReportPaymentScreenState extends State<ReportPaymentScreen> {
       _applyFullAmount();
     }
     if (_montoUsd <= 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Ingresa un monto en USD.')),
-      );
+      setState(() => _amountError = 'Ingresa un monto válido.');
       return;
     }
-    setState(() => _step = _ReportStep.selectBank);
+    setState(() {
+      _amountError = null;
+      _step = _ReportStep.selectBank;
+    });
+    _scheduleDraftSave();
   }
 
   void _goToBankDetails(int idCuenta) {
     setState(() {
       _selectedAccount = idCuenta;
       _step = _ReportStep.bankDetails;
+      _formError = null;
     });
+    _scheduleDraftSave();
   }
 
   void _goToForm() {
     if (_montoUsd <= 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Ingresa un monto en USD.')),
-      );
+      setState(() {
+        _amountError = 'Ingresa un monto válido.';
+        _step = _ReportStep.amount;
+      });
       return;
     }
-    setState(() => _step = _ReportStep.form);
+    setState(() {
+      _amountError = null;
+      _referenceError = null;
+      _formError = null;
+      _step = _ReportStep.form;
+    });
+    _scheduleDraftSave();
   }
 
   Future<void> _goToSuccess() async {
@@ -222,6 +424,27 @@ class _ReportPaymentScreenState extends State<ReportPaymentScreen> {
     setState(() => _step = _ReportStep.success);
   }
 
+  void _handleReferenceChanged(String _) {
+    if (!mounted) return;
+    if (_referenceError == null && _formError == null) {
+      _scheduleDraftSave();
+      return;
+    }
+    setState(() {
+      _referenceError = null;
+      _formError = null;
+    });
+    _scheduleDraftSave();
+  }
+
+  void _handleObservationChanged(String _) {
+    if (!mounted) return;
+    if (_formError != null) {
+      setState(() => _formError = null);
+    }
+    _scheduleDraftSave();
+  }
+
   Future<void> _pickDate() async {
     final picked = await showDatePicker(
       context: context,
@@ -231,6 +454,7 @@ class _ReportPaymentScreenState extends State<ReportPaymentScreen> {
     );
     if (picked != null) {
       setState(() => _fechaPago = picked);
+      _scheduleDraftSave();
     }
   }
 
@@ -277,19 +501,18 @@ class _ReportPaymentScreenState extends State<ReportPaymentScreen> {
   Future<void> _submit() async {
     final cuenta = _selectedAccountData;
     if (cuenta == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Selecciona un banco.')),
-      );
+      setState(() {
+        _formError = 'Selecciona un banco.';
+        _step = _ReportStep.selectBank;
+      });
       return;
     }
     if (_pendientes.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No hay deudas pendientes.')),
-      );
+      setState(() => _formError = 'No hay deudas pendientes.');
       return;
     }
     if (_refCtrl.text.trim().isEmpty) {
-      setState(() => _formError = 'Agrega la referencia del pago.');
+      setState(() => _referenceError = 'Agrega la referencia del pago.');
       return;
     }
     final montoUsd = _montoUsd;
@@ -299,13 +522,18 @@ class _ReportPaymentScreenState extends State<ReportPaymentScreen> {
       tasa: _tasaCuenta,
     );
     if (montoLocal <= 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Ingresa un monto valido.')),
-      );
+      setState(() {
+        _amountError = 'Ingresa un monto válido.';
+        _step = _ReportStep.amount;
+      });
       return;
     }
     AppHaptics.impact();
-    setState(() => _formError = null);
+    setState(() {
+      _formError = null;
+      _referenceError = null;
+      _amountError = null;
+    });
 
     final notificaciones = _pendientes
         .map((p) => {
@@ -348,6 +576,7 @@ class _ReportPaymentScreenState extends State<ReportPaymentScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Este pago ya fue reportado.')),
         );
+        await _clearDraft();
         ObservabilityService.logEvent('payment_failed', data: {
           'reason': 'duplicado',
           'inmueble_id': widget.inmueble.idInmueble,
@@ -355,6 +584,7 @@ class _ReportPaymentScreenState extends State<ReportPaymentScreen> {
         return;
       }
       await _goToSuccess();
+      await _clearDraft();
       ObservabilityService.logEvent('payment_success', data: {
         'inmueble_id': widget.inmueble.idInmueble,
         'client_uuid': _clientUuid,
@@ -434,6 +664,7 @@ class _ReportPaymentScreenState extends State<ReportPaymentScreen> {
           totalPendienteBase: _totalPendienteBase,
           payFull: _payFull,
           montoUsdCtrl: _montoUsdCtrl,
+          amountError: _amountError,
           onPayModeChange: _changePayMode,
           onAmountChanged: _onAmountChanged,
           onContinue: _goToSelectBank,
@@ -479,6 +710,9 @@ class _ReportPaymentScreenState extends State<ReportPaymentScreen> {
           evidenceHint: _evidenceHint,
           evidencePreview: _evidencePreview(),
           error: _formError,
+          referenceError: _referenceError,
+          onReferenceChanged: _handleReferenceChanged,
+          onObservationChanged: _handleObservationChanged,
         );
       case _ReportStep.success:
         return _SuccessStep(onClose: () => Navigator.of(context).pop(true));
@@ -735,6 +969,7 @@ class _AmountStep extends StatelessWidget {
   final double totalPendienteBase;
   final bool payFull;
   final TextEditingController montoUsdCtrl;
+  final String? amountError;
   final ValueChanged<bool> onPayModeChange;
   final VoidCallback onAmountChanged;
   final VoidCallback onContinue;
@@ -743,6 +978,7 @@ class _AmountStep extends StatelessWidget {
     required this.totalPendienteBase,
     required this.payFull,
     required this.montoUsdCtrl,
+    required this.amountError,
     required this.onPayModeChange,
     required this.onAmountChanged,
     required this.onContinue,
@@ -837,6 +1073,7 @@ class _AmountStep extends StatelessWidget {
             helperText:
                 payFull ? 'Se usa el total pendiente.' : 'Ingresa el monto en USD.',
             helperStyle: TextStyle(color: muted),
+            errorText: amountError,
           ),
           onChanged: (_) => onAmountChanged(),
         ),
@@ -871,7 +1108,7 @@ class _AmountStep extends StatelessWidget {
         const SizedBox(height: 20),
         ElevatedButton(
           onPressed: hasDebt ? onContinue : null,
-          child: const Text('Elegir metodo de pago'),
+          child: const Text('Elegir método de pago'),
         ),
       ],
     );
@@ -957,7 +1194,7 @@ class _SelectBankStep extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'Contacta a la administracion para agregar uno.',
+                  'Contacta a la administración para agregar uno.',
                   textAlign: TextAlign.center,
                   style: TextStyle(color: muted),
                 ),
@@ -1030,8 +1267,8 @@ class _SelectBankStep extends StatelessWidget {
                             const SizedBox(height: 4),
                             Text(
                               esVes
-                                  ? 'Pagaras: ${formatMoney(montoLocal, withSymbol: false)} $moneda (tasa ${formatMoney(tasa, withSymbol: false)} $moneda/USD)'
-                                  : 'Pagaras: ${formatMoney(montoLocal)}',
+                              ? 'Pagarás: ${formatMoney(montoLocal, withSymbol: false)} $moneda (tasa ${formatMoney(tasa, withSymbol: false)} $moneda/USD)'
+                              : 'Pagarás: ${formatMoney(montoLocal)}',
                               style: TextStyle(
                                 color: muted,
                                 fontFeatures: const [FontFeature.tabularFigures()],
@@ -1191,7 +1428,7 @@ class _BankDetailStep extends StatelessWidget {
         const SizedBox(height: 24),
         ElevatedButton(
           onPressed: onContinue,
-          child: const Text('Ya realice el pago'),
+          child: const Text('Ya realicé el pago'),
         ),
       ],
     );
@@ -1216,6 +1453,9 @@ class _PaymentFormStep extends StatelessWidget {
   final String? evidenceHint;
   final Widget? evidencePreview;
   final String? error;
+  final String? referenceError;
+  final ValueChanged<String>? onReferenceChanged;
+  final ValueChanged<String>? onObservationChanged;
 
   const _PaymentFormStep({
     required this.cuenta,
@@ -1235,6 +1475,9 @@ class _PaymentFormStep extends StatelessWidget {
     required this.evidenceHint,
     required this.evidencePreview,
     this.error,
+    this.referenceError,
+    this.onReferenceChanged,
+    this.onObservationChanged,
   });
 
   @override
@@ -1258,10 +1501,12 @@ class _PaymentFormStep extends StatelessWidget {
         TextField(
           controller: refCtrl,
           keyboardType: TextInputType.number,
-          decoration: const InputDecoration(
-            labelText: 'Numero de referencia',
-            prefixIcon: Icon(IconsRounded.pin),
+          decoration: InputDecoration(
+            labelText: 'Número de referencia',
+            prefixIcon: const Icon(IconsRounded.pin),
+            errorText: referenceError,
           ),
+          onChanged: onReferenceChanged,
         ),
         const SizedBox(height: 12),
         InkWell(
@@ -1296,6 +1541,7 @@ class _PaymentFormStep extends StatelessWidget {
           decoration: const InputDecoration(
             labelText: 'Observaciones (opcional)',
           ),
+          onChanged: onObservationChanged,
         ),
         if (error != null) ...[
           const SizedBox(height: 12),

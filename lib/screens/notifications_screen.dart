@@ -5,6 +5,7 @@ import '../services/notification_service.dart';
 import '../theme/app_theme.dart';
 import '../ui_system/components/app_empty_state.dart';
 import '../ui_system/components/app_icon_button.dart';
+import '../ui_system/perf/app_perf.dart';
 
 class NotificationsScreen extends StatefulWidget {
   final String token;
@@ -34,10 +35,12 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     final isDark = theme.brightness == Brightness.dark;
     final cardColor = theme.cardColor;
     final shadowColor = Colors.black.withValues(alpha: isDark ? 0.25 : 0.06);
+    final reduceEffects = AppPerf.reduceEffects(context);
     final textMuted =
         theme.textTheme.bodySmall?.color?.withValues(alpha: 0.7) ??
             (isDark ? AppColors.darkTextMuted : AppColors.textMuted);
     final sections = _buildSections(_items);
+    final listItems = _buildListItems(sections);
 
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
@@ -56,42 +59,45 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         onRefresh: _reload,
         child: FadeSlideTransition(
           beginOffset: const Offset(0, 0.02),
-          child: ListView(
-            physics: const AlwaysScrollableScrollPhysics(),
-            padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
-            children: [
-              if (_items.isEmpty)
-                AppEmptyState(
-                  icon: IconsRounded.notifications_off,
-                  title: 'Sin alertas por ahora.',
-                  subtitle: 'Te avisaremos si aparece algo nuevo.',
-                  actionLabel: 'Actualizar',
-                  onAction: () => _reload(),
+          child: _items.isEmpty
+              ? ListView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+                  children: [
+                    AppEmptyState(
+                      icon: IconsRounded.notifications_off,
+                      title: 'Sin alertas por ahora.',
+                      subtitle: 'Te avisaremos si aparece algo nuevo.',
+                      actionLabel: 'Actualizar',
+                      onAction: () => _reload(),
+                    ),
+                  ],
                 )
-              else
-                ...sections.expand((section) {
-                  final widgets = <Widget>[
-                    _sectionHeader(section.label, textMuted),
-                    const SizedBox(height: 10),
-                  ];
-                  widgets.addAll(
-                    section.items.map((item) {
+              : ListView.builder(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+                  itemCount: listItems.length,
+                  itemBuilder: (context, index) {
+                    final item = listItems[index];
+                    if (item.isHeader) {
                       return Padding(
-                        padding: const EdgeInsets.only(bottom: 12),
-                        child: _notificationTile(
-                          item,
-                          cardColor,
-                          shadowColor,
-                          textMuted,
-                          section.timestampLabel(item.timestamp),
-                        ),
+                        padding: const EdgeInsets.only(bottom: 10),
+                        child: _sectionHeader(item.header!, textMuted),
                       );
-                    }),
-                  );
-                  return widgets;
-                }),
-            ],
-          ),
+                    }
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: _notificationTile(
+                        item.item!,
+                        cardColor,
+                        shadowColor,
+                        textMuted,
+                        item.timeLabel!,
+                        reduceEffects,
+                      ),
+                    );
+                  },
+                ),
         ),
       ),
     );
@@ -103,6 +109,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     Color shadowColor,
     Color textMuted,
     String timeLabel,
+    bool reduceEffects,
   ) {
     final color = _kindColor(item.kind);
     final icon = _kindIcon(item.kind);
@@ -130,13 +137,15 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
           decoration: BoxDecoration(
             color: cardColor,
             borderRadius: BorderRadius.circular(18),
-            boxShadow: [
-              BoxShadow(
-                color: shadowColor,
-                blurRadius: 12,
-                offset: const Offset(0, 6),
-              ),
-            ],
+            boxShadow: reduceEffects
+                ? const []
+                : [
+                    BoxShadow(
+                      color: shadowColor,
+                      blurRadius: 12,
+                      offset: const Offset(0, 6),
+                    ),
+                  ],
           ),
           child: InkWell(
             borderRadius: BorderRadius.circular(18),
@@ -250,6 +259,24 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       );
     }
     return sections;
+  }
+
+  List<_NotificationListItem> _buildListItems(
+    List<_NotificationSection> sections,
+  ) {
+    final items = <_NotificationListItem>[];
+    for (final section in sections) {
+      items.add(_NotificationListItem.header(section.label));
+      for (final item in section.items) {
+        items.add(
+          _NotificationListItem.item(
+            item,
+            section.timestampLabel(item.timestamp),
+          ),
+        );
+      }
+    }
+    return items;
   }
 
   Widget _sectionHeader(String label, Color muted) {
@@ -495,4 +522,18 @@ class _NotificationSection {
     required this.items,
     required this.timestampLabel,
   });
+}
+
+class _NotificationListItem {
+  final String? header;
+  final AppNotification? item;
+  final String? timeLabel;
+
+  const _NotificationListItem.header(this.header)
+      : item = null,
+        timeLabel = null;
+
+  const _NotificationListItem.item(this.item, this.timeLabel) : header = null;
+
+  bool get isHeader => header != null;
 }
