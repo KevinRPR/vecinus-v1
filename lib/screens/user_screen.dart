@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -195,7 +196,19 @@ class _UserScreenState extends State<UserScreen> {
     String? debugCode,
     DateTime? expiresAt,
   }) async {
-    final controller = TextEditingController();
+    String otpCode = '';
+    String? currentTargetHint = targetHint;
+    String? currentDebugCode = debugCode;
+    DateTime? currentExpiresAt = expiresAt;
+    var resendAvailableAt = DateTime.now().add(const Duration(minutes: 1));
+    bool sendingResend = false;
+    Timer? ticker;
+
+    int secondsLeft() {
+      final diff = resendAvailableAt.difference(DateTime.now()).inSeconds;
+      return diff > 0 ? diff : 0;
+    }
+
     final result = await showModalBottomSheet<String>(
       context: sheetContext,
       isScrollControlled: true,
@@ -211,77 +224,127 @@ class _UserScreenState extends State<UserScreen> {
                 ?.color
                 ?.withValues(alpha: 0.7) ??
             Colors.grey;
-        return SafeArea(
-          top: false,
-          child: Padding(
-            padding: EdgeInsets.fromLTRB(20, 12, 20, 20 + bottomInset),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _sheetHandle(muted),
-                const SizedBox(height: 12),
-                const Text(
-                  'Verifica tu codigo',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  targetHint == null
-                      ? 'Ingresa el codigo temporal para activar 2FA.'
-                      : 'Ingresa el codigo enviado a $targetHint.',
-                  style: TextStyle(fontSize: 12, color: muted),
-                ),
-                if (expiresAt != null) ...[
-                  const SizedBox(height: 4),
-                  Text(
-                    'Valido hasta: ${expiresAt.toLocal().toString().split('.').first}',
-                    style: TextStyle(fontSize: 11, color: muted),
-                  ),
-                ],
-                if (debugCode != null && debugCode.isNotEmpty) ...[
-                  const SizedBox(height: 8),
-                  Text(
-                    'Codigo de pruebas: $debugCode',
-                    style: const TextStyle(
-                      color: AppColors.warning,
-                      fontWeight: FontWeight.w700,
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            ticker ??= Timer.periodic(const Duration(seconds: 1), (_) {
+              if (!context.mounted) return;
+              setModalState(() {});
+            });
+
+            final canResend = secondsLeft() == 0 && !sendingResend;
+            final resendLabel = sendingResend
+                ? 'Reenviando...'
+                : canResend
+                    ? 'Reenviar codigo'
+                    : 'Reenviar en ${secondsLeft()}s';
+
+            return SafeArea(
+              top: false,
+              child: SingleChildScrollView(
+                padding: EdgeInsets.fromLTRB(20, 12, 20, 20 + bottomInset),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _sheetHandle(muted),
+                    const SizedBox(height: 12),
+                    const Text(
+                      'Verifica tu codigo',
+                      style:
+                          TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
                     ),
-                  ),
-                ],
-                const SizedBox(height: 16),
-                TextField(
-                  controller: controller,
-                  keyboardType: TextInputType.number,
-                  maxLength: 6,
-                  decoration: const InputDecoration(
-                    labelText: 'Codigo OTP',
-                    hintText: 'Ejemplo: 123456',
-                  ),
+                    const SizedBox(height: 6),
+                    Text(
+                      currentTargetHint == null
+                          ? 'Ingresa el codigo temporal para activar 2FA.'
+                          : 'Ingresa el codigo enviado a $currentTargetHint.',
+                      style: TextStyle(fontSize: 12, color: muted),
+                    ),
+                    if (currentExpiresAt != null) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        'Valido hasta: ${currentExpiresAt!.toLocal().toString().split('.').first}',
+                        style: TextStyle(fontSize: 11, color: muted),
+                      ),
+                    ],
+                    if (currentDebugCode != null &&
+                        currentDebugCode!.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        'Codigo de pruebas: $currentDebugCode',
+                        style: const TextStyle(
+                          color: AppColors.warning,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 16),
+                    TextField(
+                      keyboardType: TextInputType.number,
+                      maxLength: 6,
+                      onChanged: (value) => otpCode = value,
+                      decoration: const InputDecoration(
+                        labelText: 'Codigo OTP',
+                        hintText: 'Ejemplo: 123456',
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: () =>
+                            Navigator.of(context).pop(otpCode.trim()),
+                        child: const Text('Validar codigo'),
+                      ),
+                    ),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: TextButton(
+                        onPressed: canResend
+                            ? () async {
+                                setModalState(() => sendingResend = true);
+                                try {
+                                  final request = await ProfileSecurityService
+                                      .requestTwoFactorCode(
+                                    token: widget.token,
+                                    channel: 'email',
+                                  );
+                                  currentTargetHint =
+                                      request.targetHint ?? currentTargetHint;
+                                  currentDebugCode = request.debugCode;
+                                  currentExpiresAt = request.expiresAt;
+                                  resendAvailableAt = DateTime.now()
+                                      .add(const Duration(minutes: 1));
+                                  _showSnack('Codigo reenviado.');
+                                } catch (e) {
+                                  _showSnack(
+                                      'No se pudo reenviar el codigo: $e');
+                                } finally {
+                                  if (context.mounted) {
+                                    setModalState(() => sendingResend = false);
+                                  }
+                                }
+                              }
+                            : null,
+                        child: Text(resendLabel),
+                      ),
+                    ),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: TextButton(
+                        onPressed: () => Navigator.of(context).pop(),
+                        child: const Text('Cancelar'),
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 8),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: () =>
-                        Navigator.of(context).pop(controller.text.trim()),
-                    child: const Text('Validar codigo'),
-                  ),
-                ),
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: TextButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    child: const Text('Cancelar'),
-                  ),
-                ),
-              ],
-            ),
-          ),
+              ),
+            );
+          },
         );
       },
     );
-    controller.dispose();
+    ticker?.cancel();
     return result;
   }
 
@@ -1975,7 +2038,7 @@ class _UserScreenState extends State<UserScreen> {
     required String fieldLabel,
     required ContactKind kind,
   }) {
-    final controller = TextEditingController();
+    String contactValue = '';
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -2016,10 +2079,10 @@ class _UserScreenState extends State<UserScreen> {
                 ),
                 const SizedBox(height: 16),
                 TextField(
-                  controller: controller,
                   keyboardType: kind == ContactKind.email
                       ? TextInputType.emailAddress
                       : TextInputType.phone,
+                  onChanged: (value) => contactValue = value,
                   decoration: InputDecoration(
                     labelText: fieldLabel,
                     hintText: hint,
@@ -2030,7 +2093,7 @@ class _UserScreenState extends State<UserScreen> {
                   width: double.infinity,
                   child: ElevatedButton(
                     onPressed: () async {
-                      final value = controller.text.trim();
+                      final value = contactValue.trim();
                       if (value.isEmpty) {
                         _showSnack('Completa el campo antes de continuar.');
                         return;
