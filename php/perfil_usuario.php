@@ -1,4 +1,5 @@
 <?php
+
 header("Content-Type: application/json; charset=UTF-8");
 
 require_once(__DIR__ . "/config/conexion.php");
@@ -39,12 +40,106 @@ try {
         case 'imagen':
             update_avatar($conn, $userId, $input);
             break;
+        case '2fa_status':
+        case 'two_factor_status':
+            ensure_security_schema($conn);
+            send_two_factor_status($conn, $userId);
+            break;
+        case '2fa_request':
+        case 'two_factor_request':
+            ensure_security_schema($conn);
+            request_two_factor_code($conn, $userId, $input);
+            break;
+        case '2fa_verify':
+        case 'two_factor_verify':
+            ensure_security_schema($conn);
+            verify_two_factor_code($conn, $userId, $input);
+            break;
+        case '2fa_disable':
+        case 'two_factor_disable':
+            ensure_security_schema($conn);
+            disable_two_factor($conn, $userId);
+            break;
+        case '2fa_enable':
+        case 'two_factor_enable':
+            respond_error("Usa 2fa_verify para activar 2FA.", 400);
+            break;
+        case 'contact_verification_request':
+            ensure_security_schema($conn);
+            request_contact_verification($conn, $userId, $input);
+            break;
         default:
             send_profile($conn, $userId);
             break;
     }
 } catch (Exception $e) {
     respond_error($e->getMessage(), 400);
+}
+
+function ensure_security_schema(PDO $conn): void {
+    if (security_schema_ready($conn)) {
+        return;
+    }
+
+    try {
+        $conn->exec("
+            ALTER TABLE menu_login.usuario
+                ADD COLUMN IF NOT EXISTS two_factor_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+                ADD COLUMN IF NOT EXISTS two_factor_channel VARCHAR(16) NULL,
+                ADD COLUMN IF NOT EXISTS two_factor_updated_at TIMESTAMP NULL;
+        ");
+
+        $conn->exec("
+            CREATE TABLE IF NOT EXISTS menu_login.user_two_factor_challenge (
+                id SERIAL PRIMARY KEY,
+                user_id INT NOT NULL,
+                purpose VARCHAR(24) NOT NULL DEFAULT 'two_factor',
+                code_hash VARCHAR(128) NOT NULL,
+                channel VARCHAR(16) NOT NULL DEFAULT 'email',
+                target_hint VARCHAR(120) NULL,
+                target_value VARCHAR(180) NULL,
+                expires_at TIMESTAMP NOT NULL,
+                attempts INT NOT NULL DEFAULT 0,
+                max_attempts INT NOT NULL DEFAULT 5,
+                consumed_at TIMESTAMP NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT NOW()
+            );
+        ");
+
+        $conn->exec("
+            CREATE INDEX IF NOT EXISTS idx_u2f_user_created
+            ON menu_login.user_two_factor_challenge (user_id, created_at DESC);
+        ");
+    } catch (Throwable $e) {
+        // If another process created it meanwhile, continue normally.
+        if (security_schema_ready($conn)) {
+            return;
+        }
+        log_error('2FA schema bootstrap failed', [
+            'error' => $e->getMessage(),
+        ]);
+        throw new Exception(
+            'La configuracion de 2FA no esta lista en el servidor. Ejecuta la migracion SQL con un usuario administrador.'
+        );
+    }
+}
+
+function security_schema_ready(PDO $conn): bool {
+    $colsStmt = $conn->query("
+        SELECT COUNT(*)::INT AS total
+        FROM information_schema.columns
+        WHERE table_schema = 'menu_login'
+          AND table_name = 'usuario'
+          AND column_name IN ('two_factor_enabled', 'two_factor_channel', 'two_factor_updated_at')
+    ");
+    $cols = (int)($colsStmt->fetch(PDO::FETCH_ASSOC)['total'] ?? 0);
+    if ($cols < 3) {
+        return false;
+    }
+
+    $tableStmt = $conn->query("SELECT to_regclass('menu_login.user_two_factor_challenge') AS tbl");
+    $table = (string)($tableStmt->fetch(PDO::FETCH_ASSOC)['tbl'] ?? '');
+    return $table !== '';
 }
 
 function send_profile(PDO $conn, int $userId): void {
@@ -62,6 +157,288 @@ function send_profile(PDO $conn, int $userId): void {
     }
 
     respond_success(["usuario" => build_user_payload($user)]);
+}
+
+function send_two_factor_status(PDO $conn, int $userId): void {
+    $stmt = $conn->prepare("
+        SELECT two_factor_enabled, two_factor_channel
+        FROM menu_login.usuario
+        WHERE id_usuario = :id
+        LIMIT 1
+    ");
+    $stmt->execute([":id" => $userId]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
+
+    respond_success([
+        "enabled" => ($row['two_factor_enabled'] ?? false) ? true : false,
+        "channel" => $row['two_factor_channel'] ?? null,
+    ]);
+}
+
+function request_two_factor_code(PDO $conn, int $userId, array $input): void {
+    $channel = strtolower(trim($input['canal'] ?? 'email'));
+    if (!in_array($channel, ['email', 'sms'], true)) {
+        $channel = 'email';
+    }
+
+    $user = load_user_contact($conn, $userId);
+    $contact = (string)($user['correo'] ?? '');
+    $hint = mask_email($contact);
+
+    create_otp_challenge(
+        $conn,
+        $userId,
+        'two_factor',
+        $channel,
+        $hint,
+        null
+    );
+}
+
+function verify_two_factor_code(PDO $conn, int $userId, array $input): void {
+    $code = preg_replace('/\D+/', '', (string)($input['codigo'] ?? ''));
+    if ($code === '' || strlen($code) !== 6) {
+        respond_error("Codigo OTP invalido.", 400);
+    }
+
+    $challenge = load_active_challenge($conn, $userId, 'two_factor');
+    if (!$challenge) {
+        respond_error("No hay un codigo activo para validar.", 400);
+    }
+
+    $expiresAt = strtotime((string)$challenge['expires_at']);
+    if ($expiresAt === false || $expiresAt < time()) {
+        consume_challenge($conn, (int)$challenge['id']);
+        respond_error("El codigo OTP expiro. Solicita uno nuevo.", 400);
+    }
+
+    $attempts = (int)($challenge['attempts'] ?? 0);
+    $maxAttempts = (int)($challenge['max_attempts'] ?? 5);
+    if ($attempts >= $maxAttempts) {
+        respond_error("Demasiados intentos. Solicita un codigo nuevo.", 429);
+    }
+
+    $expectedHash = (string)($challenge['code_hash'] ?? '');
+    $providedHash = otp_hash($userId, $code);
+    if (!hash_equals($expectedHash, $providedHash)) {
+        $update = $conn->prepare("
+            UPDATE menu_login.user_two_factor_challenge
+            SET attempts = attempts + 1
+            WHERE id = :id
+        ");
+        $update->execute([":id" => $challenge['id']]);
+        respond_error("Codigo OTP incorrecto.", 400);
+    }
+
+    consume_challenge($conn, (int)$challenge['id']);
+
+    $channel = (string)($challenge['channel'] ?? 'email');
+    $stmt = $conn->prepare("
+        UPDATE menu_login.usuario
+        SET two_factor_enabled = TRUE,
+            two_factor_channel = :channel,
+            two_factor_updated_at = NOW()
+        WHERE id_usuario = :id
+    ");
+    $stmt->execute([
+        ":channel" => $channel,
+        ":id" => $userId,
+    ]);
+
+    respond_success([
+        "enabled" => true,
+        "channel" => $channel,
+    ]);
+}
+
+function disable_two_factor(PDO $conn, int $userId): void {
+    $stmt = $conn->prepare("
+        UPDATE menu_login.usuario
+        SET two_factor_enabled = FALSE,
+            two_factor_channel = NULL,
+            two_factor_updated_at = NOW()
+        WHERE id_usuario = :id
+    ");
+    $stmt->execute([":id" => $userId]);
+
+    $cleanup = $conn->prepare("
+        UPDATE menu_login.user_two_factor_challenge
+        SET consumed_at = NOW()
+        WHERE user_id = :id
+          AND consumed_at IS NULL
+    ");
+    $cleanup->execute([":id" => $userId]);
+
+    respond_success([
+        "enabled" => false,
+        "channel" => null,
+    ]);
+}
+
+function request_contact_verification(PDO $conn, int $userId, array $input): void {
+    $kind = strtolower(trim((string)($input['tipo'] ?? '')));
+    $value = trim((string)($input['valor'] ?? ''));
+    if (!in_array($kind, ['email', 'phone'], true)) {
+        respond_error("Tipo de verificacion invalido.", 400);
+    }
+    if ($value === '') {
+        respond_error("Valor requerido para verificar contacto.", 400);
+    }
+
+    if ($kind === 'email' && !filter_var($value, FILTER_VALIDATE_EMAIL)) {
+        respond_error("Correo invalido.", 400);
+    }
+    if ($kind === 'phone') {
+        $digits = preg_replace('/\D+/', '', $value);
+        if ($digits === null || strlen($digits) < 7) {
+            respond_error("Telefono invalido.", 400);
+        }
+    }
+
+    $purpose = $kind === 'email' ? 'contact_email' : 'contact_phone';
+    $hint = $kind === 'email' ? mask_email($value) : mask_phone($value);
+    $channel = $kind === 'email' ? 'email' : 'sms';
+
+    create_otp_challenge(
+        $conn,
+        $userId,
+        $purpose,
+        $channel,
+        $hint,
+        $value
+    );
+}
+
+function create_otp_challenge(
+    PDO $conn,
+    int $userId,
+    string $purpose,
+    string $channel,
+    ?string $targetHint,
+    ?string $targetValue
+): void {
+    $code = str_pad((string)random_int(0, 999999), 6, '0', STR_PAD_LEFT);
+    $hash = otp_hash($userId, $code);
+    $ttlMinutes = env_int('TWO_FACTOR_CODE_TTL_MINUTES', 5);
+    $maxAttempts = env_int('TWO_FACTOR_MAX_ATTEMPTS', 5);
+    $expiresAt = date('Y-m-d H:i:s', strtotime("+{$ttlMinutes} minutes"));
+
+    $invalidate = $conn->prepare("
+        UPDATE menu_login.user_two_factor_challenge
+        SET consumed_at = NOW()
+        WHERE user_id = :id
+          AND purpose = :purpose
+          AND consumed_at IS NULL
+    ");
+    $invalidate->execute([
+        ":id" => $userId,
+        ":purpose" => $purpose,
+    ]);
+
+    $insert = $conn->prepare("
+        INSERT INTO menu_login.user_two_factor_challenge
+            (user_id, purpose, code_hash, channel, target_hint, target_value, expires_at, attempts, max_attempts)
+        VALUES
+            (:user_id, :purpose, :code_hash, :channel, :target_hint, :target_value, :expires_at, 0, :max_attempts)
+    ");
+    $insert->execute([
+        ":user_id" => $userId,
+        ":purpose" => $purpose,
+        ":code_hash" => $hash,
+        ":channel" => $channel,
+        ":target_hint" => $targetHint,
+        ":target_value" => $targetValue,
+        ":expires_at" => $expiresAt,
+        ":max_attempts" => $maxAttempts,
+    ]);
+
+    $payload = [
+        "message" => "Codigo generado.",
+        "purpose" => $purpose,
+        "channel" => $channel,
+        "target_hint" => $targetHint,
+        "expires_at" => $expiresAt,
+    ];
+
+    if (env_bool('APP_DEBUG', false) || env_bool('TWO_FACTOR_DEBUG_EXPOSE_CODE', false)) {
+        $payload["debug_code"] = $code;
+    }
+
+    respond_success($payload);
+}
+
+function load_active_challenge(PDO $conn, int $userId, string $purpose): ?array {
+    $stmt = $conn->prepare("
+        SELECT id, code_hash, expires_at, attempts, max_attempts, channel
+        FROM menu_login.user_two_factor_challenge
+        WHERE user_id = :id
+          AND purpose = :purpose
+          AND consumed_at IS NULL
+        ORDER BY created_at DESC
+        LIMIT 1
+    ");
+    $stmt->execute([
+        ":id" => $userId,
+        ":purpose" => $purpose,
+    ]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+    return $row ?: null;
+}
+
+function consume_challenge(PDO $conn, int $challengeId): void {
+    $stmt = $conn->prepare("
+        UPDATE menu_login.user_two_factor_challenge
+        SET consumed_at = NOW()
+        WHERE id = :id
+    ");
+    $stmt->execute([":id" => $challengeId]);
+}
+
+function load_user_contact(PDO $conn, int $userId): array {
+    $stmt = $conn->prepare("
+        SELECT id_usuario, correo
+        FROM menu_login.usuario
+        WHERE id_usuario = :id
+        LIMIT 1
+    ");
+    $stmt->execute([":id" => $userId]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!$row) {
+        respond_error("Usuario no encontrado.", 404);
+    }
+    return $row;
+}
+
+function otp_hash(int $userId, string $code): string {
+    return hash('sha256', $userId . '|' . $code);
+}
+
+function mask_email(string $email): string {
+    $email = trim($email);
+    if ($email === '' || strpos($email, '@') === false) {
+        return 'correo registrado';
+    }
+    [$name, $domain] = explode('@', $email, 2);
+    if ($name === '') {
+        return '***@' . $domain;
+    }
+    if (strlen($name) <= 2) {
+        $masked = substr($name, 0, 1) . '*';
+    } else {
+        $masked = substr($name, 0, 2) . str_repeat('*', max(1, strlen($name) - 2));
+    }
+    return $masked . '@' . $domain;
+}
+
+function mask_phone(string $phone): string {
+    $digits = preg_replace('/\D+/', '', $phone) ?? '';
+    if ($digits === '') {
+        return 'telefono registrado';
+    }
+    if (strlen($digits) <= 4) {
+        return str_repeat('*', strlen($digits));
+    }
+    return str_repeat('*', strlen($digits) - 4) . substr($digits, -4);
 }
 
 function update_profile(PDO $conn, int $userId, array $input): void {
@@ -105,11 +482,11 @@ function change_password(PDO $conn, int $userId, array $input): void {
     $new = $input['password_nueva'] ?? '';
 
     if (!$current || !$new) {
-        throw new Exception("Debe indicar contraseña actual y nueva.");
+        throw new Exception("Debes indicar contrasena actual y nueva.");
     }
 
     if (strlen($new) < 6) {
-        throw new Exception("La nueva contraseña debe tener al menos 6 caracteres.");
+        throw new Exception("La nueva contrasena debe tener al menos 6 caracteres.");
     }
 
     $stmt = $conn->prepare("
@@ -127,7 +504,7 @@ function change_password(PDO $conn, int $userId, array $input): void {
     $modernOk = $isModern ? password_verify($current, $stored) : false;
 
     if (!$legacyOk && !$modernOk) {
-        throw new Exception("La contraseña actual no es válida.");
+        throw new Exception("La contrasena actual no es valida.");
     }
 
     $newHash = password_hash($new, PASSWORD_DEFAULT);

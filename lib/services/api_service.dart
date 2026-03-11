@@ -26,8 +26,7 @@ class ApiService {
       defaultValue: _defaultBaseUrl,
     ),
   );
-  static String get baseRoot =>
-      baseUrl.replaceFirst(RegExp(r'movil/?$'), '');
+  static String get baseRoot => baseUrl.replaceFirst(RegExp(r'movil/?$'), '');
 
   static Uri _uri(String path) => Uri.parse('$baseUrl$path');
 
@@ -161,6 +160,85 @@ class ApiService {
     }, expectUser: false);
   }
 
+  static Future<Map<String, dynamic>> getTwoFactorStatus({
+    required String token,
+  }) async {
+    final data = await _postProfile(
+      {
+        'token': token,
+        'accion': '2fa_status',
+      },
+      expectUser: false,
+    );
+    if (data is Map<String, dynamic>) return data;
+    throw Exception('Respuesta invalida de seguridad.');
+  }
+
+  static Future<Map<String, dynamic>> requestTwoFactorCode({
+    required String token,
+    String channel = 'email',
+  }) async {
+    final data = await _postProfile(
+      {
+        'token': token,
+        'accion': '2fa_request',
+        'canal': channel,
+      },
+      expectUser: false,
+    );
+    if (data is Map<String, dynamic>) return data;
+    throw Exception('Respuesta invalida de seguridad.');
+  }
+
+  static Future<Map<String, dynamic>> verifyTwoFactorCode({
+    required String token,
+    required String code,
+  }) async {
+    final data = await _postProfile(
+      {
+        'token': token,
+        'accion': '2fa_verify',
+        'codigo': code,
+      },
+      expectUser: false,
+    );
+    if (data is Map<String, dynamic>) return data;
+    throw Exception('Respuesta invalida de seguridad.');
+  }
+
+  static Future<Map<String, dynamic>> setTwoFactorEnabled({
+    required String token,
+    required bool enabled,
+  }) async {
+    final data = await _postProfile(
+      {
+        'token': token,
+        'accion': enabled ? '2fa_enable' : '2fa_disable',
+      },
+      expectUser: false,
+    );
+    if (data is Map<String, dynamic>) return data;
+    throw Exception('Respuesta invalida de seguridad.');
+  }
+
+  static Future<Map<String, dynamic>> requestContactVerification({
+    required String token,
+    required String kind,
+    required String value,
+  }) async {
+    final data = await _postProfile(
+      {
+        'token': token,
+        'accion': 'contact_verification_request',
+        'tipo': kind,
+        'valor': value,
+      },
+      expectUser: false,
+    );
+    if (data is Map<String, dynamic>) return data;
+    throw Exception('Respuesta invalida de verificacion.');
+  }
+
   static Future<String?> uploadAvatar({
     required String token,
     required String base64Image,
@@ -255,7 +333,8 @@ class ApiService {
           .map(PaymentReport.fromJson)
           .toList();
     }
-    throw Exception(data['error'] ?? 'No se pudo consultar los pagos reportados');
+    throw Exception(
+        data['error'] ?? 'No se pudo consultar los pagos reportados');
   }
 
   static Future<dynamic> _postProfile(
@@ -270,6 +349,13 @@ class ApiService {
         return data['usuario'];
       }
       return data;
+    }
+
+    final probe = data['probe'];
+    if (probe is String && probe.trim().isNotEmpty) {
+      throw Exception(
+        'perfil_usuario.php esta en modo prueba ($probe). Quita el probe del servidor para habilitar perfil y 2FA.',
+      );
     }
 
     throw Exception(data['error'] ?? 'Error de perfil');
@@ -298,5 +384,4 @@ class ApiService {
       throw Exception('Respuesta inválida del servidor.');
     }
   }
-
 }

@@ -37,10 +37,11 @@ void main() {
         ),
       ),
     );
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 700));
 
     expect(find.text('Estado de cuenta'), findsOneWidget);
-    expect(find.text('Todo al dia por ahora.'), findsOneWidget);
+    expect(find.text('Todo al día por ahora.'), findsOneWidget);
     expect(find.text('Pagos reportados'), findsOneWidget);
     expect(find.text('No hay pagos reportados.'), findsOneWidget);
   });

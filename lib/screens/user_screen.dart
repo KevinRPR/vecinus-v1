@@ -9,13 +9,13 @@ import '../models/user_preferences.dart';
 import '../animations/transitions.dart';
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
+import '../services/profile_security_service.dart';
 import '../services/security_service.dart';
 import '../preferences_controller.dart';
 import '../theme_controller.dart';
 import '../ui_system/feedback/app_haptics.dart';
 import '../theme/app_theme.dart';
 import 'login_screen.dart';
-
 
 class UserScreen extends StatefulWidget {
   final User user;
@@ -54,6 +54,7 @@ class _UserScreenState extends State<UserScreen> {
   bool _savingProfile = false;
   bool _changingPassword = false;
   bool _uploadingAvatar = false;
+  bool _processingTwoFactor = false;
 
   @override
   void initState() {
@@ -62,8 +63,10 @@ class _UserScreenState extends State<UserScreen> {
     _apellidoController = TextEditingController(text: widget.user.apellido);
     _correoController = TextEditingController(text: widget.user.correo);
     _user = widget.user;
-    _loading = false; // usamos datos locales almacenados, sin esperar llamada remota
+    _loading =
+        false; // usamos datos locales almacenados, sin esperar llamada remota
     preferencesController.loadForUser(widget.user.id);
+    _syncTwoFactorStatus();
   }
 
   @override
@@ -81,7 +84,8 @@ class _UserScreenState extends State<UserScreen> {
     try {
       final remoteUser = await ApiService.fetchProfile(widget.token);
       final sessionAware = remoteUser.copyWith(
-        sessionExpiresAt: _user?.sessionExpiresAt ?? widget.user.sessionExpiresAt,
+        sessionExpiresAt:
+            _user?.sessionExpiresAt ?? widget.user.sessionExpiresAt,
       );
       setState(() {
         _user = sessionAware;
@@ -94,6 +98,191 @@ class _UserScreenState extends State<UserScreen> {
     } catch (e) {
       _showSnack('No se pudo sincronizar el perfil: $e');
     }
+  }
+
+  Future<void> _syncTwoFactorStatus() async {
+    try {
+      final enabled = await ProfileSecurityService.isTwoFactorEnabled(
+        token: widget.token,
+      );
+      await _setTwoFactorPreference(enabled);
+    } catch (_) {
+      // No bloqueamos la pantalla por errores de sincronizacion de 2FA.
+    }
+  }
+
+  Future<void> _setTwoFactorPreference(bool enabled) async {
+    await preferencesController.updateWith(
+      (current) => current.copyWith(
+        security: current.security.copyWith(twoFactorEnabled: enabled),
+      ),
+    );
+  }
+
+  Future<void> _toggleTwoFactor({
+    required bool enabled,
+    required BuildContext sheetContext,
+  }) async {
+    if (_processingTwoFactor) return;
+    setState(() => _processingTwoFactor = true);
+
+    final securityPrefs = preferencesController.preferences.value.security;
+    try {
+      final allowed = await SecurityService.requireAuthentication(
+        context: context,
+        useBiometrics: securityPrefs.biometricForSensitive,
+        usePin: securityPrefs.pinForSensitive,
+        reason: enabled
+            ? 'Confirma tu identidad para activar 2FA.'
+            : 'Confirma tu identidad para desactivar 2FA.',
+      );
+      if (!allowed) {
+        _showSnack('No se pudo verificar tu identidad.');
+        return;
+      }
+
+      if (!enabled) {
+        try {
+          await ProfileSecurityService.setTwoFactorEnabled(
+            token: widget.token,
+            enabled: false,
+          );
+          await _setTwoFactorPreference(false);
+          _showSnack('2FA desactivado.');
+        } catch (e) {
+          _showSnack('No se pudo desactivar 2FA: $e');
+        }
+        return;
+      }
+
+      try {
+        final request = await ProfileSecurityService.requestTwoFactorCode(
+          token: widget.token,
+          channel: 'email',
+        );
+
+        if (!sheetContext.mounted) return;
+        final code = await _promptOtpCode(
+          sheetContext: sheetContext,
+          targetHint: request.targetHint,
+          debugCode: request.debugCode,
+          expiresAt: request.expiresAt,
+        );
+        if (code == null || code.isEmpty) {
+          _showSnack('Activacion de 2FA cancelada.');
+          return;
+        }
+
+        await ProfileSecurityService.verifyTwoFactorCode(
+          token: widget.token,
+          code: code,
+        );
+        await _setTwoFactorPreference(true);
+        _showSnack('2FA activado correctamente.');
+      } catch (e) {
+        _showSnack('No se pudo activar 2FA: $e');
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _processingTwoFactor = false);
+      }
+    }
+  }
+
+  Future<String?> _promptOtpCode({
+    required BuildContext sheetContext,
+    String? targetHint,
+    String? debugCode,
+    DateTime? expiresAt,
+  }) async {
+    final controller = TextEditingController();
+    final result = await showModalBottomSheet<String>(
+      context: sheetContext,
+      isScrollControlled: true,
+      backgroundColor: Theme.of(sheetContext).cardColor,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (context) {
+        final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+        final muted = Theme.of(context)
+                .textTheme
+                .bodySmall
+                ?.color
+                ?.withValues(alpha: 0.7) ??
+            Colors.grey;
+        return SafeArea(
+          top: false,
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(20, 12, 20, 20 + bottomInset),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _sheetHandle(muted),
+                const SizedBox(height: 12),
+                const Text(
+                  'Verifica tu codigo',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  targetHint == null
+                      ? 'Ingresa el codigo temporal para activar 2FA.'
+                      : 'Ingresa el codigo enviado a $targetHint.',
+                  style: TextStyle(fontSize: 12, color: muted),
+                ),
+                if (expiresAt != null) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    'Valido hasta: ${expiresAt.toLocal().toString().split('.').first}',
+                    style: TextStyle(fontSize: 11, color: muted),
+                  ),
+                ],
+                if (debugCode != null && debugCode.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    'Codigo de pruebas: $debugCode',
+                    style: const TextStyle(
+                      color: AppColors.warning,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 16),
+                TextField(
+                  controller: controller,
+                  keyboardType: TextInputType.number,
+                  maxLength: 6,
+                  decoration: const InputDecoration(
+                    labelText: 'Codigo OTP',
+                    hintText: 'Ejemplo: 123456',
+                  ),
+                ),
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: () =>
+                        Navigator.of(context).pop(controller.text.trim()),
+                    child: const Text('Validar codigo'),
+                  ),
+                ),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: const Text('Cancelar'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+    controller.dispose();
+    return result;
   }
 
   Future<bool> _saveProfile() async {
@@ -121,7 +310,8 @@ class _UserScreenState extends State<UserScreen> {
       );
 
       final sessionAware = updated.copyWith(
-        sessionExpiresAt: _user?.sessionExpiresAt ?? widget.user.sessionExpiresAt,
+        sessionExpiresAt:
+            _user?.sessionExpiresAt ?? widget.user.sessionExpiresAt,
       );
 
       await AuthService.saveSession(widget.token, sessionAware.toJson());
@@ -213,7 +403,8 @@ class _UserScreenState extends State<UserScreen> {
           avatarUrl: avatarUrl,
         );
         final sessionAware = updatedUser.copyWith(
-          sessionExpiresAt: _user?.sessionExpiresAt ?? widget.user.sessionExpiresAt,
+          sessionExpiresAt:
+              _user?.sessionExpiresAt ?? widget.user.sessionExpiresAt,
         );
         await AuthService.saveSession(widget.token, sessionAware.toJson());
         setState(() => _user = sessionAware);
@@ -249,7 +440,7 @@ class _UserScreenState extends State<UserScreen> {
       appBar: AppBar(
         title: const Text('Mi perfil'),
         automaticallyImplyLeading: !widget.embedded,
-          leading: widget.embedded
+        leading: widget.embedded
             ? null
             : IconButton(
                 icon: const Icon(IconsRounded.arrow_back),
@@ -390,7 +581,8 @@ class _UserScreenState extends State<UserScreen> {
           padding: const EdgeInsets.all(4),
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            border: Border.all(color: AppColors.brandBlue600.withValues(alpha: 0.2), width: 4),
+            border: Border.all(
+                color: AppColors.brandBlue600.withValues(alpha: 0.2), width: 4),
           ),
           child: ClipOval(
             child: avatarUrl != null && avatarUrl.isNotEmpty
@@ -555,7 +747,8 @@ class _UserScreenState extends State<UserScreen> {
   }) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final muted = _mutedColor(isDark);
-    final textColor = isDestructive ? iconColor : Theme.of(context).colorScheme.onSurface;
+    final textColor =
+        isDestructive ? iconColor : Theme.of(context).colorScheme.onSurface;
 
     return Column(
       children: [
@@ -602,7 +795,8 @@ class _UserScreenState extends State<UserScreen> {
                       ],
                     ),
                   ),
-                  if (showChevron) Icon(IconsRounded.chevron_right, color: muted),
+                  if (showChevron)
+                    Icon(IconsRounded.chevron_right, color: muted),
                 ],
               ),
             ),
@@ -629,8 +823,10 @@ class _UserScreenState extends State<UserScreen> {
   Widget _buildSupportCard(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final muted = _mutedColor(isDark);
-    final background = AppColors.brandBlue600.withValues(alpha: isDark ? 0.12 : 0.1);
-    final borderColor = AppColors.brandBlue600.withValues(alpha: isDark ? 0.3 : 0.2);
+    final background =
+        AppColors.brandBlue600.withValues(alpha: isDark ? 0.12 : 0.1);
+    final borderColor =
+        AppColors.brandBlue600.withValues(alpha: isDark ? 0.3 : 0.2);
 
     return Container(
       padding: const EdgeInsets.all(20),
@@ -701,8 +897,8 @@ class _UserScreenState extends State<UserScreen> {
   }
 
   Widget _buildVersionFooter(BuildContext context) {
-    final muted =
-        _mutedColor(Theme.of(context).brightness == Brightness.dark).withValues(alpha: 0.8);
+    final muted = _mutedColor(Theme.of(context).brightness == Brightness.dark)
+        .withValues(alpha: 0.8);
     return Center(
       child: Text(
         'Vecinus App v2.4.0',
@@ -831,346 +1027,348 @@ class _UserScreenState extends State<UserScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                    _sheetHandle(muted),
-                    const SizedBox(height: 12),
-                    Text(
-                      'Preferencias',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
-                        color: Theme.of(sheetContext).colorScheme.onSurface,
+                      _sheetHandle(muted),
+                      const SizedBox(height: 12),
+                      Text(
+                        'Preferencias',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                          color: Theme.of(sheetContext).colorScheme.onSurface,
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 16),
-                    _sheetSectionTitle('Accesibilidad', muted),
-                    const SizedBox(height: 8),
-                    _sheetCard(
-                      cardColor: cardColor,
-                      borderColor: borderColor,
-                      padding: const EdgeInsets.fromLTRB(16, 14, 16, 6),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Tamano de letra',
-                            style: TextStyle(
-                              fontWeight: FontWeight.w600,
-                              color: Theme.of(sheetContext)
-                                  .colorScheme
-                                  .onSurface,
-                            ),
-                          ),
-                          const SizedBox(height: 6),
-                          Text(
-                            'Escala actual: ${(prefs.textScale * 100).round()}%',
-                            style: TextStyle(fontSize: 12, color: muted),
-                          ),
-                          Padding(
-                            padding: const EdgeInsets.only(top: 4),
-                            child: Slider(
-                              value: prefs.textScale,
-                              min: 0.85,
-                              max: 1.25,
-                              divisions: 8,
-                              label: '${(prefs.textScale * 100).round()}%',
-                              activeColor: AppColors.brandBlue600,
-                              onChanged: (value) {
-                                preferencesController.updateWith(
-                                  (current) =>
-                                      current.copyWith(textScale: value),
-                                );
-                              },
-                            ),
-                          ),
-                          const Divider(height: 1),
-                          _buildSwitchTile(
-                            title: 'Alto contraste',
-                            subtitle: 'Mejora la legibilidad.',
-                            value: prefs.highContrast,
-                            contentPadding: EdgeInsets.zero,
-                            onChanged: (value) {
-                              preferencesController.updateWith(
-                                (current) =>
-                                    current.copyWith(highContrast: value),
-                              );
-                            },
-                          ),
-                          const Divider(height: 1),
-                          _buildSwitchTile(
-                            title: 'Reducir animaciones',
-                            subtitle: 'Minimiza los movimientos en pantalla.',
-                            value: prefs.reduceMotion,
-                            contentPadding: EdgeInsets.zero,
-                            onChanged: (value) {
-                              preferencesController.updateWith(
-                                (current) =>
-                                    current.copyWith(reduceMotion: value),
-                              );
-                            },
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    _sheetSectionTitle('Tema', muted),
-                    const SizedBox(height: 8),
-                    _sheetCard(
-                      cardColor: cardColor,
-                      borderColor: borderColor,
-                      child: ValueListenableBuilder<ThemeMode>(
-                        valueListenable: themeController.themeMode,
-                        builder: (context, mode, _) {
-                          return RadioGroup<ThemeMode>(
-                            groupValue: mode,
-                            onChanged: (value) {
-                              if (value == null) return;
-                              themeController.setThemeMode(value);
-                            },
-                            child: Column(
-                              children: [
-                                _buildThemeTile(
-                                  title: 'Sistema',
-                                  subtitle: 'Se ajusta al dispositivo.',
-                                  value: ThemeMode.system,
-                                ),
-                                const Divider(height: 1),
-                                _buildThemeTile(
-                                  title: 'Claro',
-                                  subtitle: 'Interfaz clara siempre.',
-                                  value: ThemeMode.light,
-                                ),
-                                const Divider(height: 1),
-                                _buildThemeTile(
-                                  title: 'Oscuro',
-                                  subtitle: 'Interfaz oscura siempre.',
-                                  value: ThemeMode.dark,
-                                ),
-                              ],
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    _sheetSectionTitle('Notificaciones', muted),
-                    const SizedBox(height: 8),
-                    _sheetCard(
-                      cardColor: cardColor,
-                      borderColor: borderColor,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          _sectionMiniTitle('Tipos', muted),
-                          _buildSwitchTile(
-                            title: 'Avisos',
-                            subtitle: 'Comunicados de administración.',
-                            value: prefs.notifications.avisos,
-                            onChanged: (value) {
-                              preferencesController.updateWith(
-                                (current) => current.copyWith(
-                                  notifications: current.notifications
-                                      .copyWith(avisos: value),
-                                ),
-                              );
-                            },
-                          ),
-                          const Divider(height: 1),
-                          _buildSwitchTile(
-                            title: 'Alertas',
-                            subtitle: 'Advertencias y recordatorios.',
-                            value: prefs.notifications.alertas,
-                            onChanged: (value) {
-                              preferencesController.updateWith(
-                                (current) => current.copyWith(
-                                  notifications: current.notifications
-                                      .copyWith(alertas: value),
-                                ),
-                              );
-                            },
-                          ),
-                          const Divider(height: 1),
-                          _buildSwitchTile(
-                            title: 'Eventos',
-                            subtitle: 'Actividades y reuniones.',
-                            value: prefs.notifications.eventos,
-                            onChanged: (value) {
-                              preferencesController.updateWith(
-                                (current) => current.copyWith(
-                                  notifications: current.notifications
-                                      .copyWith(eventos: value),
-                                ),
-                              );
-                            },
-                          ),
-                          const Divider(height: 1),
-                          _buildSwitchTile(
-                            title: 'Pagos',
-                            subtitle: 'Vencimientos y confirmaciones.',
-                            value: prefs.notifications.pagos,
-                            onChanged: (value) {
-                              preferencesController.updateWith(
-                                (current) => current.copyWith(
-                                  notifications: current.notifications
-                                      .copyWith(pagos: value),
-                                ),
-                              );
-                            },
-                          ),
-                          const Divider(height: 1),
-                          _sectionMiniTitle('Canales', muted),
-                          _buildSwitchTile(
-                            title: 'Push',
-                            subtitle: 'Alertas en el telefono.',
-                            value: prefs.notifications.push,
-                            onChanged: (value) {
-                              preferencesController.updateWith(
-                                (current) => current.copyWith(
-                                  notifications: current.notifications
-                                      .copyWith(push: value),
-                                ),
-                              );
-                            },
-                          ),
-                          const Divider(height: 1),
-                          _buildSwitchTile(
-                            title: 'Email',
-                            subtitle: 'Resumenes por correo.',
-                            value: prefs.notifications.email,
-                            onChanged: (value) {
-                              preferencesController.updateWith(
-                                (current) => current.copyWith(
-                                  notifications: current.notifications
-                                      .copyWith(email: value),
-                                ),
-                              );
-                            },
-                          ),
-                          const Divider(height: 1),
-                          _buildSwitchTile(
-                            title: 'WhatsApp',
-                            subtitle: 'Mensajes rápidos al celular.',
-                            value: prefs.notifications.whatsapp,
-                            onChanged: (value) {
-                              preferencesController.updateWith(
-                                (current) => current.copyWith(
-                                  notifications: current.notifications
-                                      .copyWith(whatsapp: value),
-                                ),
-                              );
-                            },
-                          ),
-                          const Divider(height: 1),
-                          ListTile(
-                            contentPadding:
-                                const EdgeInsets.symmetric(horizontal: 16),
-                            title: const Text('Horario silencio'),
-                            subtitle: Text(
-                              _quietHoursSummary(prefs.quietHours),
-                              style: TextStyle(fontSize: 12, color: muted),
-                            ),
-                            trailing: Text(
-                              _quietHoursStatus(prefs.quietHours),
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w600,
-                                color: prefs.quietHours.isActive(DateTime.now())
-                                    ? AppColors.brandBlue600
-                                    : muted,
-                              ),
-                            ),
-                            onTap: () => _openQuietHoursSheet(prefs.quietHours),
-                          ),
-                        ],
-                      ),
-                    ),
-                    if (hasMultipleInmuebles) ...[
                       const SizedBox(height: 16),
-                      _sheetSectionTitle('Inmuebles', muted),
+                      _sheetSectionTitle('Accesibilidad', muted),
                       const SizedBox(height: 8),
                       _sheetCard(
                         cardColor: cardColor,
                         borderColor: borderColor,
-                        padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
+                        padding: const EdgeInsets.fromLTRB(16, 14, 16, 6),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            DropdownButtonFormField<String>(
-                              initialValue: _resolveFavoriteValue(
-                                prefs.inmueble.favoriteInmuebleId,
+                            Text(
+                              'Tamano de letra',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w600,
+                                color: Theme.of(sheetContext)
+                                    .colorScheme
+                                    .onSurface,
                               ),
-                              decoration: const InputDecoration(
-                                labelText: 'Inmueble favorito',
-                              ),
-                              items: _favoriteDropdownItems(),
-                              onChanged: (value) {
-                                final favorite = value == _noFavoriteValue
-                                    ? null
-                                    : value;
-                                preferencesController.updateWith(
-                                  (current) => current.copyWith(
-                                    inmueble: current.inmueble.copyWith(
-                                      favoriteInmuebleId: favorite,
-                                      clearFavorite: favorite == null,
-                                    ),
-                                  ),
-                                );
-                              },
                             ),
-                            const SizedBox(height: 12),
-                            DropdownButtonFormField<DashboardCardOrder>(
-                              initialValue: prefs.inmueble.cardOrder,
-                              decoration: const InputDecoration(
-                                labelText: 'Orden de tarjetas',
-                              ),
-                              items: const [
-                                DropdownMenuItem(
-                                  value: DashboardCardOrder.balanceFirst,
-                                  child: Text('Saldo primero'),
-                                ),
-                                DropdownMenuItem(
-                                  value: DashboardCardOrder.announcementsFirst,
-                                  child: Text('Avisos primero'),
-                                ),
-                              ],
-                              onChanged: (value) {
-                                if (value == null) return;
-                                preferencesController.updateWith(
-                                  (current) => current.copyWith(
-                                    inmueble: current.inmueble.copyWith(
-                                      cardOrder: value,
-                                    ),
-                                  ),
-                                );
-                              },
+                            const SizedBox(height: 6),
+                            Text(
+                              'Escala actual: ${(prefs.textScale * 100).round()}%',
+                              style: TextStyle(fontSize: 12, color: muted),
                             ),
-                            const SizedBox(height: 4),
+                            Padding(
+                              padding: const EdgeInsets.only(top: 4),
+                              child: Slider(
+                                value: prefs.textScale,
+                                min: 0.85,
+                                max: 1.25,
+                                divisions: 8,
+                                label: '${(prefs.textScale * 100).round()}%',
+                                activeColor: AppColors.brandBlue600,
+                                onChanged: (value) {
+                                  preferencesController.updateWith(
+                                    (current) =>
+                                        current.copyWith(textScale: value),
+                                  );
+                                },
+                              ),
+                            ),
+                            const Divider(height: 1),
                             _buildSwitchTile(
-                              title: 'Resumen compacto',
-                              subtitle:
-                                  'Muestra menos detalle en el dashboard.',
-                              value: prefs.inmueble.compactSummary,
+                              title: 'Alto contraste',
+                              subtitle: 'Mejora la legibilidad.',
+                              value: prefs.highContrast,
                               contentPadding: EdgeInsets.zero,
                               onChanged: (value) {
                                 preferencesController.updateWith(
-                                  (current) => current.copyWith(
-                                    inmueble: current.inmueble.copyWith(
-                                      compactSummary: value,
-                                    ),
-                                  ),
+                                  (current) =>
+                                      current.copyWith(highContrast: value),
+                                );
+                              },
+                            ),
+                            const Divider(height: 1),
+                            _buildSwitchTile(
+                              title: 'Reducir animaciones',
+                              subtitle: 'Minimiza los movimientos en pantalla.',
+                              value: prefs.reduceMotion,
+                              contentPadding: EdgeInsets.zero,
+                              onChanged: (value) {
+                                preferencesController.updateWith(
+                                  (current) =>
+                                      current.copyWith(reduceMotion: value),
                                 );
                               },
                             ),
                           ],
                         ),
                       ),
-                    ],
-                    Align(
-                      alignment: Alignment.centerRight,
-                      child: TextButton(
-                        onPressed: () => Navigator.of(sheetContext).pop(),
-                        child: const Text('Cerrar'),
+                      const SizedBox(height: 16),
+                      _sheetSectionTitle('Tema', muted),
+                      const SizedBox(height: 8),
+                      _sheetCard(
+                        cardColor: cardColor,
+                        borderColor: borderColor,
+                        child: ValueListenableBuilder<ThemeMode>(
+                          valueListenable: themeController.themeMode,
+                          builder: (context, mode, _) {
+                            return RadioGroup<ThemeMode>(
+                              groupValue: mode,
+                              onChanged: (value) {
+                                if (value == null) return;
+                                themeController.setThemeMode(value);
+                              },
+                              child: Column(
+                                children: [
+                                  _buildThemeTile(
+                                    title: 'Sistema',
+                                    subtitle: 'Se ajusta al dispositivo.',
+                                    value: ThemeMode.system,
+                                  ),
+                                  const Divider(height: 1),
+                                  _buildThemeTile(
+                                    title: 'Claro',
+                                    subtitle: 'Interfaz clara siempre.',
+                                    value: ThemeMode.light,
+                                  ),
+                                  const Divider(height: 1),
+                                  _buildThemeTile(
+                                    title: 'Oscuro',
+                                    subtitle: 'Interfaz oscura siempre.',
+                                    value: ThemeMode.dark,
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
+                        ),
                       ),
-                    ),
+                      const SizedBox(height: 16),
+                      _sheetSectionTitle('Notificaciones', muted),
+                      const SizedBox(height: 8),
+                      _sheetCard(
+                        cardColor: cardColor,
+                        borderColor: borderColor,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _sectionMiniTitle('Tipos', muted),
+                            _buildSwitchTile(
+                              title: 'Avisos',
+                              subtitle: 'Comunicados de administración.',
+                              value: prefs.notifications.avisos,
+                              onChanged: (value) {
+                                preferencesController.updateWith(
+                                  (current) => current.copyWith(
+                                    notifications: current.notifications
+                                        .copyWith(avisos: value),
+                                  ),
+                                );
+                              },
+                            ),
+                            const Divider(height: 1),
+                            _buildSwitchTile(
+                              title: 'Alertas',
+                              subtitle: 'Advertencias y recordatorios.',
+                              value: prefs.notifications.alertas,
+                              onChanged: (value) {
+                                preferencesController.updateWith(
+                                  (current) => current.copyWith(
+                                    notifications: current.notifications
+                                        .copyWith(alertas: value),
+                                  ),
+                                );
+                              },
+                            ),
+                            const Divider(height: 1),
+                            _buildSwitchTile(
+                              title: 'Eventos',
+                              subtitle: 'Actividades y reuniones.',
+                              value: prefs.notifications.eventos,
+                              onChanged: (value) {
+                                preferencesController.updateWith(
+                                  (current) => current.copyWith(
+                                    notifications: current.notifications
+                                        .copyWith(eventos: value),
+                                  ),
+                                );
+                              },
+                            ),
+                            const Divider(height: 1),
+                            _buildSwitchTile(
+                              title: 'Pagos',
+                              subtitle: 'Vencimientos y confirmaciones.',
+                              value: prefs.notifications.pagos,
+                              onChanged: (value) {
+                                preferencesController.updateWith(
+                                  (current) => current.copyWith(
+                                    notifications: current.notifications
+                                        .copyWith(pagos: value),
+                                  ),
+                                );
+                              },
+                            ),
+                            const Divider(height: 1),
+                            _sectionMiniTitle('Canales', muted),
+                            _buildSwitchTile(
+                              title: 'Push',
+                              subtitle: 'Alertas en el telefono.',
+                              value: prefs.notifications.push,
+                              onChanged: (value) {
+                                preferencesController.updateWith(
+                                  (current) => current.copyWith(
+                                    notifications: current.notifications
+                                        .copyWith(push: value),
+                                  ),
+                                );
+                              },
+                            ),
+                            const Divider(height: 1),
+                            _buildSwitchTile(
+                              title: 'Email',
+                              subtitle: 'Resumenes por correo.',
+                              value: prefs.notifications.email,
+                              onChanged: (value) {
+                                preferencesController.updateWith(
+                                  (current) => current.copyWith(
+                                    notifications: current.notifications
+                                        .copyWith(email: value),
+                                  ),
+                                );
+                              },
+                            ),
+                            const Divider(height: 1),
+                            _buildSwitchTile(
+                              title: 'WhatsApp',
+                              subtitle: 'Mensajes rápidos al celular.',
+                              value: prefs.notifications.whatsapp,
+                              onChanged: (value) {
+                                preferencesController.updateWith(
+                                  (current) => current.copyWith(
+                                    notifications: current.notifications
+                                        .copyWith(whatsapp: value),
+                                  ),
+                                );
+                              },
+                            ),
+                            const Divider(height: 1),
+                            ListTile(
+                              contentPadding:
+                                  const EdgeInsets.symmetric(horizontal: 16),
+                              title: const Text('Horario silencio'),
+                              subtitle: Text(
+                                _quietHoursSummary(prefs.quietHours),
+                                style: TextStyle(fontSize: 12, color: muted),
+                              ),
+                              trailing: Text(
+                                _quietHoursStatus(prefs.quietHours),
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                  color:
+                                      prefs.quietHours.isActive(DateTime.now())
+                                          ? AppColors.brandBlue600
+                                          : muted,
+                                ),
+                              ),
+                              onTap: () =>
+                                  _openQuietHoursSheet(prefs.quietHours),
+                            ),
+                          ],
+                        ),
+                      ),
+                      if (hasMultipleInmuebles) ...[
+                        const SizedBox(height: 16),
+                        _sheetSectionTitle('Inmuebles', muted),
+                        const SizedBox(height: 8),
+                        _sheetCard(
+                          cardColor: cardColor,
+                          borderColor: borderColor,
+                          padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              DropdownButtonFormField<String>(
+                                initialValue: _resolveFavoriteValue(
+                                  prefs.inmueble.favoriteInmuebleId,
+                                ),
+                                decoration: const InputDecoration(
+                                  labelText: 'Inmueble favorito',
+                                ),
+                                items: _favoriteDropdownItems(),
+                                onChanged: (value) {
+                                  final favorite =
+                                      value == _noFavoriteValue ? null : value;
+                                  preferencesController.updateWith(
+                                    (current) => current.copyWith(
+                                      inmueble: current.inmueble.copyWith(
+                                        favoriteInmuebleId: favorite,
+                                        clearFavorite: favorite == null,
+                                      ),
+                                    ),
+                                  );
+                                },
+                              ),
+                              const SizedBox(height: 12),
+                              DropdownButtonFormField<DashboardCardOrder>(
+                                initialValue: prefs.inmueble.cardOrder,
+                                decoration: const InputDecoration(
+                                  labelText: 'Orden de tarjetas',
+                                ),
+                                items: const [
+                                  DropdownMenuItem(
+                                    value: DashboardCardOrder.balanceFirst,
+                                    child: Text('Saldo primero'),
+                                  ),
+                                  DropdownMenuItem(
+                                    value:
+                                        DashboardCardOrder.announcementsFirst,
+                                    child: Text('Avisos primero'),
+                                  ),
+                                ],
+                                onChanged: (value) {
+                                  if (value == null) return;
+                                  preferencesController.updateWith(
+                                    (current) => current.copyWith(
+                                      inmueble: current.inmueble.copyWith(
+                                        cardOrder: value,
+                                      ),
+                                    ),
+                                  );
+                                },
+                              ),
+                              const SizedBox(height: 4),
+                              _buildSwitchTile(
+                                title: 'Resumen compacto',
+                                subtitle:
+                                    'Muestra menos detalle en el dashboard.',
+                                value: prefs.inmueble.compactSummary,
+                                contentPadding: EdgeInsets.zero,
+                                onChanged: (value) {
+                                  preferencesController.updateWith(
+                                    (current) => current.copyWith(
+                                      inmueble: current.inmueble.copyWith(
+                                        compactSummary: value,
+                                      ),
+                                    ),
+                                  );
+                                },
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: TextButton(
+                          onPressed: () => Navigator.of(sheetContext).pop(),
+                          child: const Text('Cerrar'),
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -1350,8 +1548,7 @@ class _UserScreenState extends State<UserScreen> {
                             value: security.pinForLogin,
                             onChanged: (value) async {
                               if (value) {
-                                final hasPin =
-                                    await SecurityService.hasPin();
+                                final hasPin = await SecurityService.hasPin();
                                 if (!sheetContext.mounted) return;
                                 final created = hasPin
                                     ? true
@@ -1378,8 +1575,7 @@ class _UserScreenState extends State<UserScreen> {
                             value: security.pinForSensitive,
                             onChanged: (value) async {
                               if (value) {
-                                final hasPin =
-                                    await SecurityService.hasPin();
+                                final hasPin = await SecurityService.hasPin();
                                 if (!sheetContext.mounted) return;
                                 final created = hasPin
                                     ? true
@@ -1436,16 +1632,16 @@ class _UserScreenState extends State<UserScreen> {
                           SizedBox(
                             width: double.infinity,
                             child: ElevatedButton(
-                                onPressed: _changingPassword
-                                    ? null
-                                    : () async {
-                                        final saved = await _changePassword();
-                                        if (!mounted) return;
-                                        if (!sheetContext.mounted) return;
-                                        if (saved) {
-                                          Navigator.of(sheetContext).pop();
-                                        }
-                                      },
+                              onPressed: _changingPassword
+                                  ? null
+                                  : () async {
+                                      final saved = await _changePassword();
+                                      if (!mounted) return;
+                                      if (!sheetContext.mounted) return;
+                                      if (saved) {
+                                        Navigator.of(sheetContext).pop();
+                                      }
+                                    },
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: AppColors.brandBlue600,
                                 foregroundColor: Colors.white,
@@ -1482,12 +1678,22 @@ class _UserScreenState extends State<UserScreen> {
                     _sheetCard(
                       cardColor: cardColor,
                       borderColor: borderColor,
-                      // TODO: Integrar flujo OTP/SMS cuando el backend este listo.
                       child: _buildSwitchTile(
-                        title: '2FA (OTP/SMS)',
-                        subtitle: 'Disponible proximamente.',
+                        title: '2FA (OTP)',
+                        subtitle: _processingTwoFactor
+                            ? 'Procesando...'
+                            : security.twoFactorEnabled
+                                ? 'Proteccion activa para acciones sensibles.'
+                                : 'Activa un codigo temporal para validar cambios.',
                         value: security.twoFactorEnabled,
-                        onChanged: null,
+                        onChanged: _processingTwoFactor
+                            ? null
+                            : (value) async {
+                                await _toggleTwoFactor(
+                                  enabled: value,
+                                  sheetContext: sheetContext,
+                                );
+                              },
                       ),
                     ),
                     Align(
@@ -1855,9 +2061,25 @@ class _UserScreenState extends State<UserScreen> {
     ContactKind kind,
     String value,
   ) async {
-    // TODO: Integrar endpoint para solicitar codigo y confirmar el cambio.
-    final label = kind == ContactKind.email ? 'correo' : 'telefono';
-    _showSnack('Te enviaremos un codigo al $label indicado.');
+    final requestKind = kind == ContactKind.email ? 'email' : 'phone';
+    try {
+      final result = await ProfileSecurityService.requestContactVerification(
+        token: widget.token,
+        kind: requestKind,
+        value: value,
+      );
+      final label = kind == ContactKind.email ? 'correo' : 'telefono';
+      final preview = result.debugCode;
+      if (preview != null && preview.isNotEmpty) {
+        _showSnack(
+          'Codigo enviado al $label. Codigo de prueba: $preview',
+        );
+      } else {
+        _showSnack('Codigo enviado al $label indicado.');
+      }
+    } catch (e) {
+      _showSnack('No se pudo solicitar el codigo: $e');
+    }
   }
 
   Widget _sheetSectionTitle(String title, Color muted) {
@@ -1900,8 +2122,9 @@ class _UserScreenState extends State<UserScreen> {
         border: Border.all(color: borderColor),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 
-              Theme.of(context).brightness == Brightness.dark ? 0.18 : 0.04,
+            color: Colors.black.withValues(
+              alpha:
+                  Theme.of(context).brightness == Brightness.dark ? 0.18 : 0.04,
             ),
             blurRadius: 12,
             offset: const Offset(0, 6),
@@ -2108,14 +2331,13 @@ class _UserScreenState extends State<UserScreen> {
         ),
         contentPadding:
             const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-        hintStyle: TextStyle(color: isDark ? Colors.grey.shade500 : Colors.grey.shade600),
-        labelStyle: TextStyle(color: isDark ? Colors.grey.shade400 : Colors.grey.shade700),
+        hintStyle: TextStyle(
+            color: isDark ? Colors.grey.shade500 : Colors.grey.shade600),
+        labelStyle: TextStyle(
+            color: isDark ? Colors.grey.shade400 : Colors.grey.shade700),
       ),
     );
   }
 }
 
 enum ContactKind { email, phone }
-
-
-
