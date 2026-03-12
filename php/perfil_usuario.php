@@ -525,17 +525,51 @@ function send_otp_email(
         $appName,
     ]);
 
+    $smtpHost = trim((string)env_value('SMTP_HOST', ''));
+    $smtpPort = (int)env_int('SMTP_PORT', 465);
+    $smtpUsername = trim((string)env_value('SMTP_USERNAME', ''));
+    $smtpPassword = (string)env_value('SMTP_PASSWORD', '');
+    $smtpSecure = strtolower(trim((string)env_value('SMTP_SECURE', 'ssl')));
+    $smtpTimeout = (int)env_int('SMTP_TIMEOUT_SECONDS', 15);
+
+    if ($fromEmail === '') {
+        $fromEmail = $smtpUsername;
+    }
+
+    if ($smtpHost !== '' && $smtpUsername !== '' && $smtpPassword !== '') {
+        return smtp_send_mail(
+            host: $smtpHost,
+            port: $smtpPort > 0 ? $smtpPort : 465,
+            secure: $smtpSecure,
+            timeoutSeconds: $smtpTimeout > 0 ? $smtpTimeout : 15,
+            username: $smtpUsername,
+            password: $smtpPassword,
+            fromEmail: $fromEmail,
+            fromName: $fromName,
+            toEmail: $to,
+            subject: $subject,
+            body: $body,
+        );
+    }
+
+    if ($smtpHost !== '' || $smtpUsername !== '' || $smtpPassword !== '') {
+        log_error('OTP SMTP config incomplete, using mail() fallback', [
+            'smtp_host_set' => $smtpHost !== '',
+            'smtp_user_set' => $smtpUsername !== '',
+            'smtp_pass_set' => $smtpPassword !== '',
+        ]);
+    }
+
+    // Fallback conservador para entornos que aun no tengan SMTP configurado.
     $headers = [
         'MIME-Version: 1.0',
         'Content-Type: text/plain; charset=UTF-8',
     ];
-
     if ($fromEmail !== '') {
         $safeName = preg_replace('/[\r\n]+/', ' ', $fromName) ?: $appName;
         $headers[] = "From: {$safeName} <{$fromEmail}>";
         $headers[] = "Reply-To: {$fromEmail}";
     }
-
     $sent = @mail($to, $subject, $body, implode("\r\n", $headers));
     if (!$sent) {
         $mailError = error_get_last();
@@ -547,6 +581,206 @@ function send_otp_email(
         ]);
     }
     return $sent;
+}
+
+function smtp_send_mail(
+    string $host,
+    int $port,
+    string $secure,
+    int $timeoutSeconds,
+    string $username,
+    string $password,
+    string $fromEmail,
+    string $fromName,
+    string $toEmail,
+    string $subject,
+    string $body
+): bool {
+    $socket = null;
+    try {
+        if (!filter_var($toEmail, FILTER_VALIDATE_EMAIL)) {
+            throw new RuntimeException('SMTP destinatario invalido.');
+        }
+        if (!filter_var($fromEmail, FILTER_VALIDATE_EMAIL)) {
+            throw new RuntimeException('SMTP remitente invalido.');
+        }
+
+        $secureMode = strtolower(trim($secure));
+        if (!in_array($secureMode, ['ssl', 'tls', 'none', ''], true)) {
+            $secureMode = 'ssl';
+        }
+
+        $transport = $secureMode === 'ssl' ? 'ssl' : 'tcp';
+        $remote = "{$transport}://{$host}:{$port}";
+        $errno = 0;
+        $errstr = '';
+        $socket = @stream_socket_client(
+            $remote,
+            $errno,
+            $errstr,
+            $timeoutSeconds,
+            STREAM_CLIENT_CONNECT
+        );
+        if ($socket === false) {
+            throw new RuntimeException("No se pudo conectar a SMTP ({$errno}) {$errstr}");
+        }
+        stream_set_timeout($socket, $timeoutSeconds);
+
+        smtp_expect_greeting($socket);
+        smtp_send_command($socket, 'EHLO ' . smtp_helo_name(), [250], 'EHLO');
+
+        if ($secureMode === 'tls') {
+            smtp_send_command($socket, 'STARTTLS', [220], 'STARTTLS');
+            $cryptoEnabled = @stream_socket_enable_crypto(
+                $socket,
+                true,
+                STREAM_CRYPTO_METHOD_TLS_CLIENT
+            );
+            if ($cryptoEnabled !== true) {
+                throw new RuntimeException('No se pudo habilitar TLS en SMTP.');
+            }
+            smtp_send_command($socket, 'EHLO ' . smtp_helo_name(), [250], 'EHLO (post TLS)');
+        }
+
+        smtp_send_command($socket, 'AUTH LOGIN', [334], 'AUTH LOGIN');
+        smtp_send_command($socket, base64_encode($username), [334], 'SMTP username');
+        smtp_send_command($socket, base64_encode($password), [235], 'SMTP password');
+
+        smtp_send_command($socket, 'MAIL FROM:<' . $fromEmail . '>', [250], 'MAIL FROM');
+        smtp_send_command($socket, 'RCPT TO:<' . $toEmail . '>', [250, 251], 'RCPT TO');
+        smtp_send_command($socket, 'DATA', [354], 'DATA');
+
+        $headers = [
+            'Date: ' . date(DATE_RFC2822),
+            'Message-ID: <' . bin2hex(random_bytes(12)) . '@' . smtp_message_domain() . '>',
+            'From: ' . smtp_format_address($fromEmail, $fromName),
+            'To: ' . $toEmail,
+            'Subject: ' . smtp_encode_header($subject),
+            'MIME-Version: 1.0',
+            'Content-Type: text/plain; charset=UTF-8',
+            'Content-Transfer-Encoding: 8bit',
+            'Reply-To: ' . $fromEmail,
+        ];
+        $payload = implode("\r\n", $headers) . "\r\n\r\n" . normalize_crlf($body);
+        smtp_send_data($socket, $payload);
+        smtp_send_command($socket, '.', [250], 'SMTP message commit');
+        smtp_send_command($socket, 'QUIT', [221], 'QUIT');
+        return true;
+    } catch (Throwable $e) {
+        log_error('OTP SMTP send failed', [
+            'to' => $toEmail,
+            'host' => $host,
+            'port' => $port,
+            'secure' => $secure,
+            'smtp_user' => $username,
+            'smtp_password_len' => strlen($password),
+            'smtp_password_hash8' => substr(hash('sha256', $password), 0, 8),
+            'from' => $fromEmail,
+            'error' => $e->getMessage(),
+        ]);
+        return false;
+    } finally {
+        if (is_resource($socket)) {
+            @fclose($socket);
+        }
+    }
+}
+
+function smtp_expect_greeting($socket): void {
+    $response = smtp_read_response($socket);
+    $code = (int)substr($response, 0, 3);
+    if ($code !== 220) {
+        throw new RuntimeException('SMTP greeting invalido: ' . $response);
+    }
+}
+
+function smtp_send_command($socket, string $command, array $expectedCodes, string $step): string {
+    $written = @fwrite($socket, $command . "\r\n");
+    if ($written === false) {
+        throw new RuntimeException("No se pudo escribir comando SMTP en {$step}.");
+    }
+    $response = smtp_read_response($socket);
+    $code = (int)substr($response, 0, 3);
+    if (!in_array($code, $expectedCodes, true)) {
+        throw new RuntimeException("SMTP {$step} fallo: {$response}");
+    }
+    return $response;
+}
+
+function smtp_read_response($socket): string {
+    $response = '';
+    $maxLines = 30;
+    for ($i = 0; $i < $maxLines; $i++) {
+        $line = fgets($socket, 2048);
+        if ($line === false) {
+            break;
+        }
+        $response .= $line;
+        if (preg_match('/^\d{3}\s/', $line) === 1) {
+            break;
+        }
+    }
+    $response = trim($response);
+    if ($response === '') {
+        throw new RuntimeException('SMTP no devolvio respuesta.');
+    }
+    return $response;
+}
+
+function smtp_send_data($socket, string $data): void {
+    $lines = preg_split("/\r\n|\n|\r/", $data);
+    if ($lines === false) {
+        $lines = [$data];
+    }
+    foreach ($lines as $line) {
+        $safeLine = (string)$line;
+        if (str_starts_with($safeLine, '.')) {
+            $safeLine = '.' . $safeLine;
+        }
+        $written = @fwrite($socket, $safeLine . "\r\n");
+        if ($written === false) {
+            throw new RuntimeException('No se pudo enviar DATA por SMTP.');
+        }
+    }
+}
+
+function smtp_format_address(string $email, string $name): string {
+    $cleanName = trim(preg_replace('/[\r\n]+/', ' ', $name) ?? '');
+    if ($cleanName === '') {
+        return $email;
+    }
+    return smtp_encode_header($cleanName) . " <{$email}>";
+}
+
+function smtp_encode_header(string $value): string {
+    $clean = trim(preg_replace('/[\r\n]+/', ' ', $value) ?? '');
+    if ($clean === '') {
+        return '';
+    }
+    if (function_exists('mb_encode_mimeheader')) {
+        return mb_encode_mimeheader($clean, 'UTF-8', 'B', "\r\n");
+    }
+    return '=?UTF-8?B?' . base64_encode($clean) . '?=';
+}
+
+function normalize_crlf(string $value): string {
+    $normalized = preg_replace("/\r\n|\r|\n/", "\r\n", $value);
+    return $normalized === null ? $value : $normalized;
+}
+
+function smtp_helo_name(): string {
+    $host = $_SERVER['HTTP_HOST'] ?? gethostname() ?? 'localhost';
+    $host = strtolower(trim((string)$host));
+    return $host !== '' ? $host : 'localhost';
+}
+
+function smtp_message_domain(): string {
+    $host = smtp_helo_name();
+    if (strpos($host, ':') !== false) {
+        $parts = explode(':', $host);
+        return $parts[0] !== '' ? $parts[0] : 'localhost';
+    }
+    return $host;
 }
 
 function update_profile(PDO $conn, int $userId, array $input): void {

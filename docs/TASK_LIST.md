@@ -27,7 +27,7 @@
 - [x] Reduce heavy blur/shadows on low-end devices.
 
 ### Stage 3 - Trust and secure sessions
-- [ ] Refresh token end-to-end (server + client).
+- [x] Refresh token end-to-end (server + client).
 - [ ] Secure unlock flow (biometric/PIN + fallback).
 
 ### Stage 4 - Delight and expansion

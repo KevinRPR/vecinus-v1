@@ -198,15 +198,33 @@ function save_evidence_file(string $clientUuid, string $rawBase64, string $ext):
     }
 
     $cleanData = preg_replace('/^data:[^;]+;base64,/', '', $rawBase64);
-    $binary = base64_decode($cleanData);
+    $binary = base64_decode($cleanData, true);
     if ($binary === false) {
         throw new Exception('Comprobante invalido.');
+    }
+
+    $maxBytes = env_int('EVIDENCE_MAX_BYTES', 5000000);
+    if (strlen($binary) > $maxBytes) {
+        throw new Exception('El comprobante supera el tamano maximo permitido.');
+    }
+
+    $mimeByExt = [
+        'jpg' => 'image/jpeg',
+        'jpeg' => 'image/jpeg',
+        'png' => 'image/png',
+        'pdf' => 'application/pdf',
+    ];
+    $expectedMime = $mimeByExt[$ext] ?? null;
+    $finfo = new finfo(FILEINFO_MIME_TYPE);
+    $detectedMime = $finfo->buffer($binary);
+    if ($expectedMime === null || $detectedMime !== $expectedMime) {
+        throw new Exception('Tipo de comprobante no permitido.');
     }
 
     $dir = evidence_directory();
     $filename = $clientUuid . '.' . $ext;
     $path = $dir . '/' . $filename;
-    file_put_contents($path, $binary);
+    file_put_contents($path, $binary, LOCK_EX);
 
     $relative = 'uploads/evidencias/' . $filename;
     return [$path, build_public_url($relative)];

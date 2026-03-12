@@ -7,11 +7,11 @@
 - Esto evita re-login frecuente, pero si el backend invalida el token antes,
   el servidor respondera 401 y la app pedira login.
 
-## Renovacion silenciosa (stub)
-Actualmente no existe un endpoint de refresh token expuesto en el API.
-Se dejo un stub en `lib/services/token_refresher.dart`:
-- Implementar `TokenRefresher` con el endpoint real cuando este disponible.
-- El flujo actual no se rompe si no hay refresh.
+## Renovacion silenciosa
+La app usa `refresh_token.php` para rotar token y extender sesion sin forzar re-login.
+- Cliente: `lib/services/token_refresher.dart` (implementacion HTTP real).
+- Backend: `php/refresh_token.php`.
+- Logout: `php/logout.php` revoca token en servidor.
 
 ## Acceso rapido
 - Post-login se ofrece activar biometria o configurar PIN (opcional).

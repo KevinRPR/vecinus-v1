@@ -60,7 +60,9 @@ try {
 
     $bypass = dev_login_bypass_allowed($email, $ip);
     $universalPassword = (string)env_value('DEV_UNIVERSAL_PASSWORD', '');
-    $universalOk = $universalPassword !== '' && hash_equals($universalPassword, $password);
+    $universalOk = $appEnv === 'local'
+        && $universalPassword !== ''
+        && hash_equals($universalPassword, $password);
     if (!$bypass) {
         $stored = $user['contrasena'] ?? '';
         $isModern = preg_match('/^\\$2[aby]\\$|^\\$argon2/', $stored) === 1;

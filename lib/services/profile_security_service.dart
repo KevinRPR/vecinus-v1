@@ -1,4 +1,5 @@
 import 'api_service.dart';
+import 'observability_service.dart';
 
 class OtpRequestResult {
   final DateTime? expiresAt;
@@ -38,9 +39,17 @@ class ProfileSecurityService {
     required String token,
     String channel = 'email',
   }) async {
+    await ObservabilityService.logEvent(
+      'two_factor_request_started',
+      data: {'channel': channel},
+    );
     final data = await ApiService.requestTwoFactorCode(
       token: token,
       channel: channel,
+    );
+    await ObservabilityService.logEvent(
+      'two_factor_request_success',
+      data: {'channel': channel},
     );
     return OtpRequestResult.fromJson(data);
   }
@@ -49,10 +58,12 @@ class ProfileSecurityService {
     required String token,
     required String code,
   }) async {
+    await ObservabilityService.logEvent('two_factor_verify_started');
     await ApiService.verifyTwoFactorCode(
       token: token,
       code: code,
     );
+    await ObservabilityService.logEvent('two_factor_verify_success');
   }
 
   static Future<void> setTwoFactorEnabled({
@@ -70,10 +81,18 @@ class ProfileSecurityService {
     required String kind,
     required String value,
   }) async {
+    await ObservabilityService.logEvent(
+      'contact_verification_request_started',
+      data: {'kind': kind},
+    );
     final data = await ApiService.requestContactVerification(
       token: token,
       kind: kind,
       value: value,
+    );
+    await ObservabilityService.logEvent(
+      'contact_verification_request_success',
+      data: {'kind': kind},
     );
     return OtpRequestResult.fromJson(data);
   }

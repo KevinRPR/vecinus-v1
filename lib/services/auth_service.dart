@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'api_service.dart';
 import 'token_refresher.dart';
 
 class AuthService {
@@ -46,6 +47,15 @@ class AuthService {
 
   /// Borra la sesion por completo
   static Future<void> logout() async {
+    final token = await getToken();
+    if (token != null && token.isNotEmpty) {
+      try {
+        await ApiService.logout(token);
+      } catch (_) {
+        // Best-effort revocation. Local logout must continue.
+      }
+    }
+
     await _secure.delete(key: _tokenKey);
     await _secure.delete(key: _userKey);
     await _secure.delete(key: _expiryKey);

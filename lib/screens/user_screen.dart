@@ -55,7 +55,7 @@ class _UserScreenState extends State<UserScreen> {
   bool _savingProfile = false;
   bool _changingPassword = false;
   bool _uploadingAvatar = false;
-  bool _processingTwoFactor = false;
+  final ValueNotifier<bool> _processingTwoFactor = ValueNotifier<bool>(false);
 
   @override
   void initState() {
@@ -78,6 +78,7 @@ class _UserScreenState extends State<UserScreen> {
     _passwordActualController.dispose();
     _passwordNuevaController.dispose();
     _passwordConfirmController.dispose();
+    _processingTwoFactor.dispose();
     super.dispose();
   }
 
@@ -124,8 +125,8 @@ class _UserScreenState extends State<UserScreen> {
     required bool enabled,
     required BuildContext sheetContext,
   }) async {
-    if (_processingTwoFactor) return;
-    setState(() => _processingTwoFactor = true);
+    if (_processingTwoFactor.value) return;
+    _processingTwoFactor.value = true;
 
     final securityPrefs = preferencesController.preferences.value.security;
     try {
@@ -184,9 +185,7 @@ class _UserScreenState extends State<UserScreen> {
         _showSnack('No se pudo activar 2FA: $e');
       }
     } finally {
-      if (mounted) {
-        setState(() => _processingTwoFactor = false);
-      }
+      _processingTwoFactor.value = false;
     }
   }
 
@@ -1741,22 +1740,26 @@ class _UserScreenState extends State<UserScreen> {
                     _sheetCard(
                       cardColor: cardColor,
                       borderColor: borderColor,
-                      child: _buildSwitchTile(
-                        title: '2FA (OTP)',
-                        subtitle: _processingTwoFactor
-                            ? 'Procesando...'
-                            : security.twoFactorEnabled
-                                ? 'Proteccion activa para acciones sensibles.'
-                                : 'Activa un codigo temporal para validar cambios.',
-                        value: security.twoFactorEnabled,
-                        onChanged: _processingTwoFactor
-                            ? null
-                            : (value) async {
-                                await _toggleTwoFactor(
-                                  enabled: value,
-                                  sheetContext: sheetContext,
-                                );
-                              },
+                      child: ValueListenableBuilder<bool>(
+                        valueListenable: _processingTwoFactor,
+                        builder: (context, processingTwoFactor, _) =>
+                            _buildSwitchTile(
+                          title: '2FA (OTP)',
+                          subtitle: processingTwoFactor
+                              ? 'Procesando...'
+                              : security.twoFactorEnabled
+                                  ? 'Proteccion activa para acciones sensibles.'
+                                  : 'Activa un codigo temporal para validar cambios.',
+                          value: security.twoFactorEnabled,
+                          onChanged: processingTwoFactor
+                              ? null
+                              : (value) async {
+                                  await _toggleTwoFactor(
+                                    enabled: value,
+                                    sheetContext: sheetContext,
+                                  );
+                                },
+                        ),
                       ),
                     ),
                     Align(

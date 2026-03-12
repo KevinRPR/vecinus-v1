@@ -7,6 +7,7 @@ import 'package:http/http.dart' as http;
 import '../models/inmueble.dart';
 import '../models/user.dart';
 import '../models/payment_report.dart';
+import 'observability_service.dart';
 
 class ApiAuthException implements Exception {
   final String message;
@@ -61,18 +62,31 @@ class ApiService {
             )
             .timeout(_timeout);
       } on TimeoutException {
+        await ObservabilityService.logEvent(
+          'api_timeout',
+          data: {'path': path, 'attempt': attempt + 1},
+        );
         attempt += 1;
         if (attempt >= _maxAttempts) {
           throw Exception(_noConnectionMessage);
         }
         await Future<void>.delayed(_retryDelay);
       } on SocketException {
+        await ObservabilityService.logEvent(
+          'api_socket_error',
+          data: {'path': path, 'attempt': attempt + 1},
+        );
         attempt += 1;
         if (attempt >= _maxAttempts) {
           throw Exception(_noConnectionMessage);
         }
         await Future<void>.delayed(_retryDelay);
       } on HandshakeException {
+        await ObservabilityService.captureException(
+          const HandshakeException(_secureConnectionMessage),
+          context: 'api_handshake_error',
+          data: {'path': path},
+        );
         throw Exception(_secureConnectionMessage);
       }
     }
@@ -101,6 +115,18 @@ class ApiService {
     } else {
       throw Exception(data['error'] ?? 'Error desconocido');
     }
+  }
+
+  static Future<void> logout(String token) async {
+    final response = await _postJson(
+      'logout.php',
+      {'token': token},
+    );
+    final data = _decodeResponse(response);
+    if (response.statusCode == 200 && data['success'] == true) {
+      return;
+    }
+    throw Exception(data['error'] ?? 'No se pudo cerrar la sesion');
   }
 
   static Future<List<Inmueble>> getMisInmuebles(String token) async {
@@ -370,6 +396,19 @@ class ApiService {
       }
       throw const FormatException('Respuesta JSON inesperada');
     } on FormatException {
+      unawaited(
+        ObservabilityService.captureException(
+          const FormatException('Respuesta JSON invalida'),
+          context: 'api_decode_error',
+          data: {
+            'status_code': response.statusCode,
+            'body_prefix': body.trimLeft().substring(
+                  0,
+                  body.trimLeft().length.clamp(0, 120).toInt(),
+                ),
+          },
+        ),
+      );
       final trimmed = body.trimLeft().toLowerCase();
       if (trimmed.startsWith('<!doctype') || trimmed.startsWith('<html')) {
         if (trimmed.contains('cloudflare')) {

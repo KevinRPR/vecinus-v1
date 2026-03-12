@@ -26,10 +26,7 @@ try {
     $inmueblesConDeuda = enrich_with_cxc($conn, $inmuebles);
     respond_success(["inmuebles" => $inmueblesConDeuda]);
 } catch (Exception $e) {
-    file_put_contents(
-        __DIR__ . "/debug_error.txt",
-        "ERROR mis_inmuebles: " . $e->getMessage()
-    );
+    log_error("mis_inmuebles error: " . $e->getMessage());
     $lower = strtolower($e->getMessage());
     $status = (strpos($lower, 'token') !== false) ? 401 : 500;
     respond_error($e->getMessage(), $status);

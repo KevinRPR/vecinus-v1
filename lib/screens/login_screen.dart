@@ -83,6 +83,7 @@ class _LoginScreenState extends State<LoginScreen> {
     });
 
     try {
+      await ObservabilityService.logEvent('login_started');
       final data = await ApiService.login(
         emailController.text.trim(),
         passwordController.text.trim(),
@@ -100,7 +101,10 @@ class _LoginScreenState extends State<LoginScreen> {
       await AuthService.saveSession(token, sessionUser.toJson());
       await preferencesController.loadForUser(sessionUser.id);
       await _maybePromptQuickAccess(sessionUser);
-      ObservabilityService.logEvent('login_success');
+      await ObservabilityService.logEvent(
+        'login_success',
+        data: {'quick_access_prompted': true},
+      );
 
       if (mounted) {
         Navigator.pushReplacement(
@@ -109,6 +113,14 @@ class _LoginScreenState extends State<LoginScreen> {
         );
       }
     } catch (e) {
+      await ObservabilityService.logEvent(
+        'login_failed',
+        data: {'error_type': e.runtimeType.toString()},
+      );
+      await ObservabilityService.captureException(
+        e,
+        context: 'login_failed',
+      );
       String message = e.toString();
       const exceptionPrefix = 'Exception: ';
       if (message.startsWith(exceptionPrefix)) {

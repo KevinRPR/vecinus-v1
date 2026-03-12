@@ -27,3 +27,12 @@ pubspec.lock
 .env
 .env.local
 /php/config/env.local.php
+/php/**/env.local.php
+
+# Server/runtime artifacts (never version these)
+/php/copia_server/
+/php/unused/
+/php/uploads/
+/php/**/uploads/
+/php/**/evidencias/
+/php/**/debug*.txt

@@ -38,6 +38,13 @@ function _load_env(): array {
         'MAIL_FROM_EMAIL',
         'MAIL_FROM_NAME',
         'MAIL_OTP_SUBJECT_PREFIX',
+        'SMTP_HOST',
+        'SMTP_PORT',
+        'SMTP_USERNAME',
+        'SMTP_PASSWORD',
+        'SMTP_SECURE',
+        'SMTP_TIMEOUT_SECONDS',
+        'EVIDENCE_MAX_BYTES',
     ];
 
     foreach ($keys as $key) {
