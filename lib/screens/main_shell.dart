@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:ui';
 
@@ -9,6 +10,8 @@ import '../models/user.dart';
 import '../services/auth_service.dart';
 import '../services/api_service.dart';
 import '../services/notification_service.dart';
+import '../services/payment_report_queue_service.dart';
+import '../services/payment_report_status_sync_service.dart';
 import '../preferences_controller.dart';
 import '../animations/transitions.dart';
 import '../theme/app_theme.dart';
@@ -83,6 +86,7 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       _maybeRefreshData();
+      unawaited(_syncReportServices(trigger: 'resume'));
     }
   }
 
@@ -256,6 +260,9 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
   void _onTabSelected(int index) {
     if (index == 0 || index == 1) {
       _maybeRefreshData();
+    }
+    if (index == 1) {
+      unawaited(_syncReportServices(trigger: 'payments_tab'));
     }
     setState(() => _currentIndex = index);
     _pageController.animateToPage(
@@ -436,6 +443,20 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
               child: navContent,
             ),
     );
+  }
+
+  Future<void> _syncReportServices({required String trigger}) async {
+    if (_token.trim().isEmpty) return;
+    await PaymentReportQueueService.flush(
+      token: _token,
+      trigger: trigger,
+    );
+    await PaymentReportStatusSyncService.sync(
+      token: _token,
+      trigger: trigger,
+    );
+    if (!mounted) return;
+    setState(() {});
   }
 }
 

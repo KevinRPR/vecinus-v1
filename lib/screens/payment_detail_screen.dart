@@ -4,6 +4,8 @@ import '../models/inmueble.dart';
 import '../models/pago.dart';
 import '../models/payment_report.dart';
 import '../services/api_service.dart';
+import '../services/payment_report_queue_service.dart';
+import '../services/payment_report_status_sync_service.dart';
 import '../theme/app_theme.dart';
 import '../ui_system/components/app_empty_state.dart';
 import '../ui_system/components/app_icon_button.dart';
@@ -42,6 +44,8 @@ class PaymentDetailScreen extends StatefulWidget {
 
 class _PaymentDetailScreenState extends State<PaymentDetailScreen> {
   List<PaymentReport> _reportes = [];
+  List<PendingPaymentReport> _pendingQueue = [];
+  String? _retryingClientUuid;
 
   @override
   void initState() {
@@ -49,20 +53,41 @@ class _PaymentDetailScreenState extends State<PaymentDetailScreen> {
     _loadReportes();
   }
 
-  Future<void> _loadReportes() async {
+  Future<void> _loadReportes({bool flushQueue = true}) async {
     try {
+      if (flushQueue) {
+        await PaymentReportQueueService.flush(
+          token: widget.token,
+          trigger: 'payment_detail_refresh',
+        );
+      }
       final loader = widget.reportesLoader ?? ApiService.getMisPagosReportados;
       final items = await loader(
         token: widget.token,
         idInmueble: widget.inmueble.idInmueble,
       );
+      final queue = await PaymentReportQueueService.byInmueble(
+        widget.inmueble.idInmueble,
+      );
+      await PaymentReportStatusSyncService.sync(
+        token: widget.token,
+        reports: items,
+        trigger: 'payment_detail_refresh',
+      );
       if (!mounted) return;
       setState(() {
         _reportes = items;
+        _pendingQueue = queue;
       });
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
+      final messenger = ScaffoldMessenger.of(context);
+      final queue = await PaymentReportQueueService.byInmueble(
+        widget.inmueble.idInmueble,
+      );
+      if (!mounted) return;
+      setState(() => _pendingQueue = queue);
+      messenger.showSnackBar(
         SnackBar(content: Text('No se pudo cargar los reportes: $e')),
       );
     }
@@ -267,6 +292,10 @@ class _PaymentDetailScreenState extends State<PaymentDetailScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        if (_pendingQueue.isNotEmpty) ...[
+          _pendingQueueSection(context, muted),
+          const SizedBox(height: 16),
+        ],
         Row(
           children: [
             Text(
@@ -289,14 +318,106 @@ class _PaymentDetailScreenState extends State<PaymentDetailScreen> {
         else
           Column(
             children: [
-              for (int i = 0; i < reportes.length && i < 3; i++) ...[
+              for (int i = 0; i < reportes.length; i++) ...[
                 _reporteItem(context, reportes[i], muted),
-                if (i != 2 && i != reportes.length - 1)
+                if (i != reportes.length - 1)
                   const SizedBox(height: 10),
               ],
             ],
           ),
       ],
+    );
+  }
+
+  Widget _pendingQueueSection(BuildContext context, Color muted) {
+    final theme = Theme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Pendientes por enviar',
+          style: theme.textTheme.titleSmall?.copyWith(
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        const SizedBox(height: 10),
+        for (int i = 0; i < _pendingQueue.length; i++) ...[
+          _pendingQueueItem(context, _pendingQueue[i], muted),
+          if (i != _pendingQueue.length - 1) const SizedBox(height: 10),
+        ],
+      ],
+    );
+  }
+
+  Widget _pendingQueueItem(
+    BuildContext context,
+    PendingPaymentReport item,
+    Color muted,
+  ) {
+    final theme = Theme.of(context);
+    final isRetrying = _retryingClientUuid == item.clientUuid;
+    final statusText = item.blocked
+        ? 'Requiere revision manual'
+        : (item.nextAttemptAt == null
+            ? 'Esperando reintento'
+            : 'Proximo intento: ${_formatDateTimeLabel(item.nextAttemptAt)}');
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: theme.cardColor,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: theme.colorScheme.outline),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.cloud_off_rounded, color: AppColors.warning),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Reporte en cola #${item.clientUuid.length > 8 ? item.clientUuid.substring(0, 8) : item.clientUuid}',
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                ),
+              ),
+              Text(
+                'Intentos: ${item.attempts}',
+                style: TextStyle(color: muted, fontSize: 12),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(statusText, style: TextStyle(color: muted, fontSize: 12)),
+          if ((item.lastError ?? '').trim().isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text(
+              item.lastError!,
+              style: TextStyle(
+                color: theme.colorScheme.error,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+          const SizedBox(height: 10),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton.icon(
+              onPressed: isRetrying ? null : () => _retryQueueItem(item),
+              icon: isRetrying
+                  ? const SizedBox(
+                      width: 14,
+                      height: 14,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.refresh_rounded, size: 16),
+              label: Text(isRetrying ? 'Reintentando...' : 'Reintentar'),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -307,11 +428,11 @@ class _PaymentDetailScreenState extends State<PaymentDetailScreen> {
   ) {
     final theme = Theme.of(context);
     final monto = report.totalBase;
-    final fecha = _formatReportDate(report);
     final status = _statusForReport(report);
     final observacion = safeTextOrEmpty(report.observacion);
-    final motivo = safeTextOrEmpty(report.motivoRechazo);
-    final hasEvidence = report.evidenciaUrl != null && report.evidenciaUrl!.trim().isNotEmpty;
+    final comentarioAdmin =
+        safeTextOrEmpty(report.comentarioAdmin ?? report.motivoRechazo);
+    final timeline = _timelineForReport(report);
 
     return Container(
       padding: const EdgeInsets.all(14),
@@ -341,50 +462,58 @@ class _PaymentDetailScreenState extends State<PaymentDetailScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  'Pago reportado',
-                  style: TextStyle(fontWeight: FontWeight.w600),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  fecha,
-                  style: TextStyle(color: muted, fontSize: 12),
+                Row(
+                  children: [
+                    Text(
+                      'Reporte #${report.id}',
+                      style: const TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      report.estadoLabel ?? _businessStatusLabel(report),
+                      style: TextStyle(color: muted, fontSize: 12),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 6),
                 AppStatusChip(status: status, compact: true),
+                const SizedBox(height: 10),
+                _timelineWidget(context, timeline, muted),
                 if (observacion.isNotEmpty) ...[
                   const SizedBox(height: 6),
                   Text(
-                    observacion,
+                    'Nota: $observacion',
                     style: TextStyle(color: muted, fontSize: 12),
                   ),
                 ],
-                if (motivo.isNotEmpty) ...[
+                if (comentarioAdmin.isNotEmpty) ...[
                   const SizedBox(height: 6),
                   Text(
-                    motivo,
+                    (report.estado.toUpperCase() == 'RECHAZADO')
+                        ? 'Motivo: $comentarioAdmin'
+                        : 'Comentario admin: $comentarioAdmin',
                     style: TextStyle(
-                      color: theme.colorScheme.error,
+                      color: report.estado.toUpperCase() == 'RECHAZADO'
+                          ? theme.colorScheme.error
+                          : muted,
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
                 ],
-                if (hasEvidence) ...[
-                  const SizedBox(height: 8),
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: TextButton.icon(
-                      onPressed: () => _openEvidence(context, report),
-                      icon: const Icon(IconsRounded.picture_as_pdf, size: 16),
-                      label: const Text('Ver comprobante'),
-                      style: TextButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                        minimumSize: const Size(44, 36),
-                      ),
+                const SizedBox(height: 8),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: OutlinedButton.icon(
+                    onPressed: () => _openEvidence(context, report),
+                    icon: const Icon(IconsRounded.picture_as_pdf, size: 16),
+                    label: const Text('Ver comprobante'),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      minimumSize: const Size(44, 36),
                     ),
                   ),
-                ],
+                ),
               ],
             ),
           ),
@@ -417,14 +546,124 @@ class _PaymentDetailScreenState extends State<PaymentDetailScreen> {
     return list;
   }
 
+  Future<void> _retryQueueItem(PendingPaymentReport item) async {
+    setState(() => _retryingClientUuid = item.clientUuid);
+    try {
+      final ok = await PaymentReportQueueService.retryNow(
+        token: widget.token,
+        clientUuid: item.clientUuid,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            ok
+                ? 'Reporte reenviado correctamente.'
+                : 'No se pudo reenviar el reporte. Revisa la conexion o los datos.',
+          ),
+        ),
+      );
+      await _loadReportes(flushQueue: false);
+    } finally {
+      if (mounted) {
+        setState(() => _retryingClientUuid = null);
+      }
+    }
+  }
+
   DateTime _parseReportDate(PaymentReport report) {
     if (report.createdAt != null) return report.createdAt!;
     return DateTime.tryParse(report.fechaPago) ?? DateTime.fromMillisecondsSinceEpoch(0);
   }
 
-  String _formatReportDate(PaymentReport report) {
-    final raw = report.fechaPago.isNotEmpty ? report.fechaPago : null;
-    return _formatDateLabel(raw);
+  List<PaymentReportTimelineEvent> _timelineForReport(PaymentReport report) {
+    if (report.timeline.isNotEmpty) {
+      return report.timeline;
+    }
+    final out = <PaymentReportTimelineEvent>[];
+    if (report.createdAt != null) {
+      out.add(PaymentReportTimelineEvent(
+        key: 'enviado',
+        label: 'Enviado',
+        at: report.createdAt,
+      ));
+      out.add(PaymentReportTimelineEvent(
+        key: 'en_revision',
+        label: 'En revision',
+        at: report.createdAt,
+      ));
+    }
+    if (report.aprobadoAt != null) {
+      out.add(PaymentReportTimelineEvent(
+        key: 'aprobado',
+        label: 'Aprobado',
+        at: report.aprobadoAt,
+      ));
+    } else if (report.rechazadoAt != null) {
+      out.add(PaymentReportTimelineEvent(
+        key: 'rechazado',
+        label: 'Rechazado',
+        at: report.rechazadoAt,
+      ));
+    }
+    return out;
+  }
+
+  Widget _timelineWidget(
+    BuildContext context,
+    List<PaymentReportTimelineEvent> items,
+    Color muted,
+  ) {
+    if (items.isEmpty) {
+      return Text(
+        'Sin timeline disponible.',
+        style: TextStyle(color: muted, fontSize: 12),
+      );
+    }
+    return Column(
+      children: [
+        for (int i = 0; i < items.length; i++)
+          Padding(
+            padding: EdgeInsets.only(bottom: i == items.length - 1 ? 0 : 6),
+            child: Row(
+              children: [
+                Container(
+                  width: 8,
+                  height: 8,
+                  decoration: const BoxDecoration(
+                    color: AppColors.brandBlue600,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    items[i].label,
+                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                  ),
+                ),
+                Text(
+                  _formatDateTimeLabel(items[i].at),
+                  style: TextStyle(color: muted, fontSize: 11),
+                ),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+
+  String _businessStatusLabel(PaymentReport report) {
+    final estado = report.estado.toUpperCase();
+    if (estado == 'APROBADO') return 'Aprobado';
+    if (estado == 'RECHAZADO') return 'Rechazado';
+    return 'En revision';
+  }
+
+  String _formatDateTimeLabel(DateTime? date) {
+    if (date == null) return '--';
+    String two(int n) => n.toString().padLeft(2, '0');
+    return '${date.year}-${two(date.month)}-${two(date.day)} ${two(date.hour)}:${two(date.minute)}';
   }
 
   AppStatus _statusForReport(PaymentReport report) {
@@ -442,14 +681,16 @@ class _PaymentDetailScreenState extends State<PaymentDetailScreen> {
   }
 
   Future<void> _openEvidence(BuildContext context, PaymentReport report) async {
-    final url = report.evidenciaUrl;
-    if (url == null || url.trim().isEmpty) {
+    final uri = _resolveEvidenceUri(
+      report.evidenciaUrl,
+      fallbackPath: report.evidenciaPath,
+    );
+    if (uri == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('No hay comprobante disponible.')),
       );
       return;
     }
-    final uri = Uri.parse(url.trim());
     final openedExternal = await launchUrl(
       uri,
       mode: LaunchMode.externalApplication,
@@ -466,6 +707,34 @@ class _PaymentDetailScreenState extends State<PaymentDetailScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('No se pudo abrir el comprobante.')),
     );
+  }
+
+  Uri? _resolveEvidenceUri(String? rawUrl, {String? fallbackPath}) {
+    final raw = (rawUrl ?? fallbackPath ?? '').trim();
+    if (raw.isEmpty) return null;
+
+    final lowered = raw.toLowerCase();
+    if (lowered.startsWith('http://') || lowered.startsWith('https://')) {
+      return Uri.tryParse(raw);
+    }
+
+    var normalized = raw.replaceAll('\\', '/');
+    while (normalized.startsWith('/')) {
+      normalized = normalized.substring(1);
+    }
+    if (normalized.startsWith('condominio/movil/')) {
+      normalized = normalized.substring('condominio/movil/'.length);
+    } else if (normalized.startsWith('movil/')) {
+      normalized = normalized.substring('movil/'.length);
+    }
+    const marker = 'uploads/evidencias/';
+    final markerIndex = normalized.indexOf(marker);
+    if (markerIndex >= 0) {
+      normalized = normalized.substring(markerIndex);
+    }
+    if (normalized.isEmpty) return null;
+
+    return Uri.tryParse('${ApiService.baseUrl}$normalized');
   }
 
   String _formatDateLabel(String? raw) {

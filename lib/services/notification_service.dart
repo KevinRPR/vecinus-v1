@@ -7,6 +7,7 @@ class AppNotification {
   final String title;
   final String subtitle;
   final NotificationKind kind;
+  final String? eventKey;
   final DateTime timestamp;
 
   AppNotification({
@@ -14,6 +15,7 @@ class AppNotification {
     required this.title,
     required this.subtitle,
     required this.kind,
+    this.eventKey,
     DateTime? timestamp,
   }) : timestamp = timestamp ?? DateTime.now();
 
@@ -23,6 +25,7 @@ class AppNotification {
       title: json['title'] as String,
       subtitle: json['subtitle'] as String,
       kind: NotificationKind.values[json['kind'] as int],
+      eventKey: json['event_key']?.toString(),
       timestamp: DateTime.tryParse(json['timestamp'] as String? ?? '') ??
           DateTime.now(),
     );
@@ -34,6 +37,8 @@ class AppNotification {
       'title': title,
       'subtitle': subtitle,
       'kind': kind.index,
+      if (eventKey != null && eventKey!.trim().isNotEmpty)
+        'event_key': eventKey,
       'timestamp': timestamp.toIso8601String(),
     };
   }
@@ -81,7 +86,16 @@ class NotificationService {
     required String title,
     required String subtitle,
     NotificationKind kind = NotificationKind.info,
+    String? eventKey,
+    bool uniqueByEventKey = false,
   }) async {
+    final normalizedEventKey = eventKey?.trim();
+    if (uniqueByEventKey &&
+        normalizedEventKey != null &&
+        normalizedEventKey.isNotEmpty &&
+        _items.any((n) => n.eventKey == normalizedEventKey)) {
+      return;
+    }
     _items.insert(
       0,
       AppNotification(
@@ -89,6 +103,7 @@ class NotificationService {
         title: title,
         subtitle: subtitle,
         kind: kind,
+        eventKey: normalizedEventKey,
       ),
     );
     await _persist();

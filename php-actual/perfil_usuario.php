@@ -10,6 +10,9 @@ handle_preflight();
 
 $conn = ConexionAPI::getInstance();
 $input = json_decode(file_get_contents("php://input"), true) ?? [];
+if (empty($input)) {
+    $input = $_POST;
+}
 
 $token = trim($input['token'] ?? '');
 $action = strtolower(trim($input['accion'] ?? 'consultar'));
@@ -21,6 +24,9 @@ if (!$token) {
 try {
     $userId = resolve_user_id_from_token($conn, $token);
 } catch (Exception $e) {
+    log_error('perfil_usuario token validation failed', [
+        'error' => $e->getMessage(),
+    ]);
     respond_error("Token invalido o expirado.", 401);
 }
 
@@ -33,6 +39,8 @@ try {
         case 'password':
         case 'contrasena':
         case 'cambiar_password':
+            ensure_security_schema($conn);
+            require_two_factor_for_sensitive_action($conn, $userId, $input);
             change_password($conn, $userId, $input);
             break;
         case 'avatar':
@@ -58,6 +66,7 @@ try {
         case '2fa_disable':
         case 'two_factor_disable':
             ensure_security_schema($conn);
+            require_two_factor_for_sensitive_action($conn, $userId, $input);
             disable_two_factor($conn, $userId);
             break;
         case '2fa_enable':
@@ -73,6 +82,11 @@ try {
             break;
     }
 } catch (Exception $e) {
+    log_error('perfil_usuario action failed', [
+        'action' => $action,
+        'user_id' => $userId ?? null,
+        'error' => $e->getMessage(),
+    ]);
     respond_error($e->getMessage(), 400);
 }
 
@@ -101,14 +115,26 @@ function ensure_security_schema(PDO $conn): void {
                 expires_at TIMESTAMP NOT NULL,
                 attempts INT NOT NULL DEFAULT 0,
                 max_attempts INT NOT NULL DEFAULT 5,
+                request_ip INET NULL,
+                user_agent TEXT NULL,
                 consumed_at TIMESTAMP NULL,
                 created_at TIMESTAMP NOT NULL DEFAULT NOW()
             );
         ");
 
         $conn->exec("
+            ALTER TABLE menu_login.user_two_factor_challenge
+                ADD COLUMN IF NOT EXISTS request_ip INET NULL,
+                ADD COLUMN IF NOT EXISTS user_agent TEXT NULL;
+        ");
+
+        $conn->exec("
             CREATE INDEX IF NOT EXISTS idx_u2f_user_created
             ON menu_login.user_two_factor_challenge (user_id, created_at DESC);
+        ");
+        $conn->exec("
+            CREATE INDEX IF NOT EXISTS idx_u2f_ip_created
+            ON menu_login.user_two_factor_challenge (request_ip, created_at DESC);
         ");
     } catch (Throwable $e) {
         // If another process created it meanwhile, continue normally.
@@ -139,7 +165,19 @@ function security_schema_ready(PDO $conn): bool {
 
     $tableStmt = $conn->query("SELECT to_regclass('menu_login.user_two_factor_challenge') AS tbl");
     $table = (string)($tableStmt->fetch(PDO::FETCH_ASSOC)['tbl'] ?? '');
-    return $table !== '';
+    if ($table === '') {
+        return false;
+    }
+
+    $challengeColsStmt = $conn->query("
+        SELECT COUNT(*)::INT AS total
+        FROM information_schema.columns
+        WHERE table_schema = 'menu_login'
+          AND table_name = 'user_two_factor_challenge'
+          AND column_name IN ('request_ip', 'user_agent')
+    ");
+    $challengeCols = (int)($challengeColsStmt->fetch(PDO::FETCH_ASSOC)['total'] ?? 0);
+    return $challengeCols >= 2;
 }
 
 function send_profile(PDO $conn, int $userId): void {
@@ -173,6 +211,62 @@ function send_two_factor_status(PDO $conn, int $userId): void {
         "enabled" => ($row['two_factor_enabled'] ?? false) ? true : false,
         "channel" => $row['two_factor_channel'] ?? null,
     ]);
+}
+
+function is_two_factor_enabled(PDO $conn, int $userId): bool {
+    $stmt = $conn->prepare("
+        SELECT two_factor_enabled
+        FROM menu_login.usuario
+        WHERE id_usuario = :id
+        LIMIT 1
+    ");
+    $stmt->execute([":id" => $userId]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
+    return ($row['two_factor_enabled'] ?? false) ? true : false;
+}
+
+function require_two_factor_for_sensitive_action(PDO $conn, int $userId, array $input): void {
+    if (!is_two_factor_enabled($conn, $userId)) {
+        return;
+    }
+
+    $codeRaw = (string)($input['otp_code'] ?? $input['codigo_2fa'] ?? $input['codigo'] ?? '');
+    $code = preg_replace('/\D+/', '', $codeRaw);
+    if ($code === '' || strlen($code) !== 6) {
+        throw new Exception('Se requiere un codigo OTP valido para completar esta accion.');
+    }
+
+    $challenge = load_active_challenge($conn, $userId, 'two_factor');
+    if (!$challenge) {
+        throw new Exception('No hay un codigo OTP activo. Solicita uno nuevo.');
+    }
+
+    $expiresAt = strtotime((string)$challenge['expires_at']);
+    if ($expiresAt === false || $expiresAt < time()) {
+        consume_challenge($conn, (int)$challenge['id']);
+        throw new Exception('El codigo OTP expiro. Solicita uno nuevo.');
+    }
+
+    $attempts = (int)($challenge['attempts'] ?? 0);
+    $maxAttempts = (int)($challenge['max_attempts'] ?? 3);
+    if ($attempts >= $maxAttempts) {
+        throw new Exception('Agotaste los intentos de codigo OTP. Solicita uno nuevo.');
+    }
+
+    $expectedHash = (string)($challenge['code_hash'] ?? '');
+    $providedHash = otp_hash($userId, $code);
+    if (!hash_equals($expectedHash, $providedHash)) {
+        $update = $conn->prepare("
+            UPDATE menu_login.user_two_factor_challenge
+            SET attempts = attempts + 1
+            WHERE id = :id
+        ");
+        $update->execute([":id" => $challenge['id']]);
+        $remaining = max(0, $maxAttempts - ($attempts + 1));
+        throw new Exception("Codigo OTP incorrecto. Intentos restantes: {$remaining}.");
+    }
+
+    consume_challenge($conn, (int)$challenge['id']);
 }
 
 function request_two_factor_code(PDO $conn, int $userId, array $input): void {
@@ -213,9 +307,9 @@ function verify_two_factor_code(PDO $conn, int $userId, array $input): void {
     }
 
     $attempts = (int)($challenge['attempts'] ?? 0);
-    $maxAttempts = (int)($challenge['max_attempts'] ?? 5);
+    $maxAttempts = (int)($challenge['max_attempts'] ?? 3);
     if ($attempts >= $maxAttempts) {
-        respond_error("Demasiados intentos. Solicita un codigo nuevo.", 429);
+        respond_error("Agotaste los intentos de codigo OTP. Solicita uno nuevo.", 429);
     }
 
     $expectedHash = (string)($challenge['code_hash'] ?? '');
@@ -227,7 +321,8 @@ function verify_two_factor_code(PDO $conn, int $userId, array $input): void {
             WHERE id = :id
         ");
         $update->execute([":id" => $challenge['id']]);
-        respond_error("Codigo OTP incorrecto.", 400);
+        $remaining = max(0, $maxAttempts - ($attempts + 1));
+        respond_error("Codigo OTP incorrecto. Intentos restantes: {$remaining}.", 400);
     }
 
     consume_challenge($conn, (int)$challenge['id']);
@@ -309,6 +404,70 @@ function request_contact_verification(PDO $conn, int $userId, array $input): voi
     );
 }
 
+function client_ip(): ?string {
+    $raw = trim((string)($_SERVER['REMOTE_ADDR'] ?? ''));
+    if ($raw === '') {
+        return null;
+    }
+    return filter_var($raw, FILTER_VALIDATE_IP) ? $raw : null;
+}
+
+function enforce_two_factor_request_rate_limit(PDO $conn, int $userId, string $purpose): void {
+    if ($purpose !== 'two_factor') {
+        return;
+    }
+
+    $windowSeconds = env_int('TWO_FACTOR_REQUEST_WINDOW_SECONDS', 900);
+    $maxPerUser = env_int('TWO_FACTOR_REQUEST_MAX_PER_USER', 5);
+    $maxPerIp = env_int('TWO_FACTOR_REQUEST_MAX_PER_IP', 20);
+    if ($windowSeconds <= 0) {
+        return;
+    }
+
+    $query = $conn->prepare("
+        SELECT COUNT(*)::INT AS total
+        FROM menu_login.user_two_factor_challenge
+        WHERE user_id = :id
+          AND purpose = :purpose
+          AND created_at >= NOW() - (:window_seconds || ' seconds')::interval
+    ");
+    $query->execute([
+        ':id' => $userId,
+        ':purpose' => $purpose,
+        ':window_seconds' => $windowSeconds,
+    ]);
+    $userCount = (int)($query->fetch(PDO::FETCH_ASSOC)['total'] ?? 0);
+    if ($maxPerUser > 0 && $userCount >= $maxPerUser) {
+        throw new Exception('Demasiadas solicitudes de codigo OTP. Intenta mas tarde.');
+    }
+
+    $ip = client_ip();
+    if ($ip !== null && $maxPerIp > 0) {
+        try {
+            $queryIp = $conn->prepare("
+                SELECT COUNT(*)::INT AS total
+                FROM menu_login.user_two_factor_challenge
+                WHERE request_ip = :ip
+                  AND purpose = :purpose
+                  AND created_at >= NOW() - (:window_seconds || ' seconds')::interval
+            ");
+            $queryIp->execute([
+                ':ip' => $ip,
+                ':purpose' => $purpose,
+                ':window_seconds' => $windowSeconds,
+            ]);
+            $ipCount = (int)($queryIp->fetch(PDO::FETCH_ASSOC)['total'] ?? 0);
+            if ($ipCount >= $maxPerIp) {
+                throw new Exception('Demasiadas solicitudes OTP desde tu red. Intenta mas tarde.');
+            }
+        } catch (Throwable $e) {
+            log_error('2FA IP rate limit skipped', [
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+}
+
 function create_otp_challenge(
     PDO $conn,
     int $userId,
@@ -317,6 +476,8 @@ function create_otp_challenge(
     ?string $targetHint,
     ?string $targetValue
 ): void {
+    enforce_two_factor_request_rate_limit($conn, $userId, $purpose);
+
     $cooldownSeconds = env_int('TWO_FACTOR_RESEND_COOLDOWN_SECONDS', 60);
     $lastChallengeStmt = $conn->prepare("
         SELECT created_at
@@ -345,7 +506,7 @@ function create_otp_challenge(
     $code = str_pad((string)random_int(0, 999999), 6, '0', STR_PAD_LEFT);
     $hash = otp_hash($userId, $code);
     $ttlMinutes = env_int('TWO_FACTOR_CODE_TTL_MINUTES', 5);
-    $maxAttempts = env_int('TWO_FACTOR_MAX_ATTEMPTS', 5);
+    $maxAttempts = env_int('TWO_FACTOR_MAX_ATTEMPTS', 3);
     $expiresAt = date('Y-m-d H:i:s', strtotime("+{$ttlMinutes} minutes"));
 
     $invalidate = $conn->prepare("
@@ -362,9 +523,9 @@ function create_otp_challenge(
 
     $insert = $conn->prepare("
         INSERT INTO menu_login.user_two_factor_challenge
-            (user_id, purpose, code_hash, channel, target_hint, target_value, expires_at, attempts, max_attempts)
+            (user_id, purpose, code_hash, channel, target_hint, target_value, expires_at, attempts, max_attempts, request_ip, user_agent)
         VALUES
-            (:user_id, :purpose, :code_hash, :channel, :target_hint, :target_value, :expires_at, 0, :max_attempts)
+            (:user_id, :purpose, :code_hash, :channel, :target_hint, :target_value, :expires_at, 0, :max_attempts, :request_ip, :user_agent)
     ");
     $insert->execute([
         ":user_id" => $userId,
@@ -375,6 +536,8 @@ function create_otp_challenge(
         ":target_value" => $targetValue,
         ":expires_at" => $expiresAt,
         ":max_attempts" => $maxAttempts,
+        ":request_ip" => client_ip(),
+        ":user_agent" => $_SERVER['HTTP_USER_AGENT'] ?? null,
     ]);
 
     if ($channel === 'email') {

@@ -69,10 +69,12 @@ class ProfileSecurityService {
   static Future<void> setTwoFactorEnabled({
     required String token,
     required bool enabled,
+    String? twoFactorCode,
   }) async {
     await ApiService.setTwoFactorEnabled(
       token: token,
       enabled: enabled,
+      twoFactorCode: twoFactorCode,
     );
   }
 

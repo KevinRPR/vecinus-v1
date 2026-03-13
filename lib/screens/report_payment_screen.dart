@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
@@ -10,6 +11,8 @@ import '../models/inmueble.dart';
 import '../services/api_service.dart';
 import '../services/notification_service.dart';
 import '../services/observability_service.dart';
+import '../services/payment_report_queue_service.dart';
+import '../services/payment_report_status_sync_service.dart';
 import '../theme/app_theme.dart';
 import '../ui_system/components/app_empty_state.dart';
 import '../ui_system/components/app_icon_button.dart';
@@ -23,6 +26,7 @@ typedef PreparePagoReporteLoader = Future<Map<String, dynamic>> Function({
 });
 
 enum _ReportStep { amount, selectBank, bankDetails, form, success }
+enum _EvidenceSource { image, pdf }
 
 class ReportPaymentScreen extends StatefulWidget {
   final String token;
@@ -42,11 +46,14 @@ class ReportPaymentScreen extends StatefulWidget {
 
 class _ReportPaymentScreenState extends State<ReportPaymentScreen> {
   bool _loading = true;
+  bool _submitting = false;
   String? _error;
   Map<String, dynamic>? _data;
   int? _selectedAccount;
   _ReportStep _step = _ReportStep.amount;
   late String _clientUuid;
+  String? _submittedClientUuid;
+  bool _queuedForRetry = false;
   bool _payFull = true;
   String? _amountError;
   String? _referenceError;
@@ -56,16 +63,16 @@ class _ReportPaymentScreenState extends State<ReportPaymentScreen> {
   final TextEditingController _refCtrl = TextEditingController();
   final TextEditingController _montoUsdCtrl = TextEditingController();
   DateTime _fechaPago = DateTime.now();
+  final ImagePicker _picker = ImagePicker();
 
-  final _picker = ImagePicker();
   String? _evidenceBase64;
   String? _evidenceExt;
   String? _evidenceName;
   int? _evidenceBytes;
   String? _formError;
 
-  static const int _maxEvidenceBytes = 2 * 1024 * 1024;
-  static const List<String> _allowedEvidenceExt = ['jpg', 'jpeg', 'png'];
+  static const int _maxEvidenceBytes = 5 * 1024 * 1024;
+  static const List<String> _allowedEvidenceExt = ['jpg', 'jpeg', 'png', 'pdf'];
   static const Duration _prepareCacheTtl = Duration(minutes: 10);
   static const Duration _draftTtl = Duration(hours: 24);
 
@@ -415,13 +422,26 @@ class _ReportPaymentScreenState extends State<ReportPaymentScreen> {
     _scheduleDraftSave();
   }
 
-  Future<void> _goToSuccess() async {
+  Future<void> _goToSuccess({
+    required String clientUuid,
+    bool queued = false,
+  }) async {
     await NotificationService.add(
-      title: 'Tu pago esta siendo procesado',
-      subtitle: 'Se esta conciliando tu reporte',
-      kind: NotificationKind.info,
+      title: queued
+          ? 'Reporte guardado sin conexion'
+          : 'Tu pago esta siendo procesado',
+      subtitle: queued
+          ? 'Se reintentara automaticamente cuando vuelva internet.'
+          : 'Se esta conciliando tu reporte',
+      kind: queued ? NotificationKind.warning : NotificationKind.info,
+      eventKey: queued ? 'queue_saved_$clientUuid' : null,
+      uniqueByEventKey: queued,
     );
-    setState(() => _step = _ReportStep.success);
+    setState(() {
+      _submittedClientUuid = clientUuid;
+      _queuedForRetry = queued;
+      _step = _ReportStep.success;
+    });
   }
 
   void _handleReferenceChanged(String _) {
@@ -459,43 +479,135 @@ class _ReportPaymentScreenState extends State<ReportPaymentScreen> {
   }
 
   Future<void> _pickEvidence() async {
+    final source = await _chooseEvidenceSource();
+    if (source == null) return;
+    if (source == _EvidenceSource.image) {
+      await _pickImageEvidence();
+      return;
+    }
+    await _pickPdfEvidence();
+  }
+
+  Future<_EvidenceSource?> _chooseEvidenceSource() async {
+    return showModalBottomSheet<_EvidenceSource>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.image_outlined),
+                title: const Text('Imagen (JPG/PNG)'),
+                subtitle: const Text('Se optimiza para envio'),
+                onTap: () => Navigator.of(ctx).pop(_EvidenceSource.image),
+              ),
+              ListTile(
+                leading: const Icon(IconsRounded.picture_as_pdf),
+                title: const Text('PDF'),
+                subtitle: const Text('Maximo 5 MB'),
+                onTap: () => Navigator.of(ctx).pop(_EvidenceSource.pdf),
+              ),
+              const SizedBox(height: 8),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _pickImageEvidence() async {
     final file = await _picker.pickImage(
       source: ImageSource.gallery,
-      imageQuality: 80,
-      maxWidth: 1280,
+      imageQuality: 78,
+      maxWidth: 1440,
     );
     if (file == null) return;
     final bytes = await file.readAsBytes();
+    if (bytes.isEmpty) {
+      _showEvidenceError('No se pudo leer la imagen seleccionada.');
+      return;
+    }
+    final ext = _inferExtension(file.name.isNotEmpty ? file.name : file.path);
+    if (!_allowedEvidenceExt.contains(ext) || ext == 'pdf') {
+      _showEvidenceError('Formato no permitido. Usa JPG o PNG.');
+      return;
+    }
+    _setEvidenceFromBytes(
+      bytes: bytes,
+      ext: ext,
+      name: file.name.isEmpty ? 'comprobante.$ext' : file.name,
+    );
+  }
+
+  Future<void> _pickPdfEvidence() async {
+    final picked = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowMultiple: false,
+      withData: true,
+      allowedExtensions: const ['pdf'],
+    );
+    if (picked == null || picked.files.isEmpty) return;
+    final file = picked.files.single;
+    final bytes = file.bytes;
+    if (bytes == null || bytes.isEmpty) {
+      _showEvidenceError('No se pudo leer el archivo seleccionado.');
+      return;
+    }
+    _setEvidenceFromBytes(
+      bytes: bytes,
+      ext: 'pdf',
+      name: file.name.isEmpty ? 'comprobante.pdf' : file.name,
+    );
+  }
+
+  void _setEvidenceFromBytes({
+    required List<int> bytes,
+    required String ext,
+    required String name,
+  }) {
     if (bytes.length > _maxEvidenceBytes) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('El archivo supera el limite de 2 MB.'),
-        ),
-      );
+      _showEvidenceError('El archivo supera el limite de 5 MB.');
+      return;
+    }
+    if (!_allowedEvidenceExt.contains(ext)) {
+      _showEvidenceError('Formato no permitido. Usa JPG, PNG o PDF.');
       return;
     }
     final encoded = base64Encode(bytes);
-    final ext = file.path.split('.').last.toLowerCase();
-    if (!_allowedEvidenceExt.contains(ext)) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Formato no permitido. Usa JPG o PNG.'),
-        ),
-      );
-      return;
-    }
+    final mime = _mimeByExtension(ext);
     setState(() {
-      _evidenceBase64 = 'data:image/$ext;base64,$encoded';
+      _evidenceBase64 = 'data:$mime;base64,$encoded';
       _evidenceExt = ext;
-      _evidenceName = file.name;
+      _evidenceName = name;
       _evidenceBytes = bytes.length;
     });
+    _showEvidenceError('Comprobante adjuntado', isError: false);
+  }
+
+  void _showEvidenceError(String message, {bool isError = true}) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Comprobante adjuntado')),
+      SnackBar(
+        content: Text(message),
+        backgroundColor:
+            isError ? null : Theme.of(context).colorScheme.primaryContainer,
+      ),
     );
+  }
+
+  String _inferExtension(String fileName) {
+    final clean = fileName.trim().toLowerCase();
+    final dot = clean.lastIndexOf('.');
+    if (dot == -1 || dot == clean.length - 1) {
+      return 'jpg';
+    }
+    final ext = clean.substring(dot + 1);
+    if (ext == 'jpeg' || ext == 'jpg' || ext == 'png' || ext == 'pdf') {
+      return ext;
+    }
+    return 'jpg';
   }
 
   Future<void> _submit() async {
@@ -554,7 +666,10 @@ class _ReportPaymentScreenState extends State<ReportPaymentScreen> {
       }
     ];
 
-    setState(() => _loading = true);
+    setState(() {
+      _loading = true;
+      _submitting = true;
+    });
     try {
       ObservabilityService.logEvent('payment_started', data: {
         'inmueble_id': widget.inmueble.idInmueble,
@@ -573,33 +688,57 @@ class _ReportPaymentScreenState extends State<ReportPaymentScreen> {
       );
       if (!mounted) return;
       if (res['duplicado'] == true) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Este pago ya fue reportado.')),
-        );
         await _clearDraft();
-        ObservabilityService.logEvent('payment_failed', data: {
-          'reason': 'duplicado',
-          'inmueble_id': widget.inmueble.idInmueble,
-        });
-        return;
+        await _goToSuccess(clientUuid: _clientUuid, queued: false);
+      } else {
+        await _goToSuccess(clientUuid: _clientUuid, queued: false);
+        await _clearDraft();
       }
-      await _goToSuccess();
-      await _clearDraft();
+      await PaymentReportStatusSyncService.sync(
+        token: widget.token,
+        trigger: 'after_submit',
+      );
       ObservabilityService.logEvent('payment_success', data: {
         'inmueble_id': widget.inmueble.idInmueble,
         'client_uuid': _clientUuid,
       });
     } catch (e) {
       if (!mounted) return;
-      ObservabilityService.logEvent('payment_failed', data: {
-        'reason': 'exception',
-        'inmueble_id': widget.inmueble.idInmueble,
-      });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error al procesar: $e')),
-      );
+      final isConnectivityFailure = PaymentReportQueueService
+          .isConnectivityFailure(e);
+      if (isConnectivityFailure) {
+        final queuedItem = PendingPaymentReport(
+          clientUuid: _clientUuid,
+          inmuebleId: widget.inmueble.idInmueble,
+          fechaPago: _fechaPago.toIso8601String().split('T').first,
+          observacion: _obsCtrl.text.trim(),
+          notificaciones: notificaciones.cast<Map<String, dynamic>>(),
+          pagos: pagos.cast<Map<String, dynamic>>(),
+          comprobanteBase64: _evidenceBase64,
+          comprobanteExt: _evidenceExt,
+          queuedAt: DateTime.now(),
+        );
+        await PaymentReportQueueService.enqueue(queuedItem);
+        await _clearDraft();
+        await _goToSuccess(clientUuid: _clientUuid, queued: true);
+      } else {
+        final friendly = _friendlySubmitError(e);
+        ObservabilityService.logEvent('payment_failed', data: {
+          'reason': 'exception',
+          'inmueble_id': widget.inmueble.idInmueble,
+          'error': e.toString(),
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(friendly)),
+        );
+      }
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _submitting = false;
+        });
+      }
     }
   }
 
@@ -711,11 +850,16 @@ class _ReportPaymentScreenState extends State<ReportPaymentScreen> {
           evidencePreview: _evidencePreview(),
           error: _formError,
           referenceError: _referenceError,
+          isSubmitting: _submitting,
           onReferenceChanged: _handleReferenceChanged,
           onObservationChanged: _handleObservationChanged,
         );
       case _ReportStep.success:
-        return _SuccessStep(onClose: () => Navigator.of(context).pop(true));
+        return _SuccessStep(
+          onClose: () => Navigator.of(context).pop(true),
+          queued: _queuedForRetry,
+          clientUuid: _submittedClientUuid,
+        );
     }
   }
 
@@ -791,11 +935,48 @@ class _ReportPaymentScreenState extends State<ReportPaymentScreen> {
   }
 
   String get _evidenceHint {
-    return 'Formatos: JPG, PNG. Max 2 MB.';
+    return 'Formatos: JPG, PNG, PDF. Max 5 MB.';
   }
 
   Widget? _evidencePreview() {
     if (_evidenceBase64 == null) return null;
+    if (_evidenceExt == 'pdf') {
+      return Container(
+        margin: const EdgeInsets.only(top: 8),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Theme.of(context).cardColor,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Theme.of(context).colorScheme.outline),
+        ),
+        child: Row(
+          children: [
+            const Icon(IconsRounded.picture_as_pdf, color: AppColors.brandBlue600),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    _evidenceName ?? 'Comprobante.pdf',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    _evidenceBytes == null
+                        ? 'PDF adjuntado'
+                        : 'PDF adjuntado - ${_formatBytes(_evidenceBytes!)}',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
     final base64 = _evidenceBase64!;
     final bytes = base64.contains(',') ? base64.split(',').last : base64;
     try {
@@ -821,6 +1002,49 @@ class _ReportPaymentScreenState extends State<ReportPaymentScreen> {
     if (kb < 1024) return '${kb.toStringAsFixed(0)} KB';
     final mb = kb / 1024;
     return '${mb.toStringAsFixed(1)} MB';
+  }
+
+  String _mimeByExtension(String ext) {
+    switch (ext.toLowerCase()) {
+      case 'jpg':
+      case 'jpeg':
+        return 'image/jpeg';
+      case 'png':
+        return 'image/png';
+      case 'pdf':
+        return 'application/pdf';
+      default:
+        return 'application/octet-stream';
+    }
+  }
+
+  String _friendlySubmitError(Object error) {
+    final raw = error.toString();
+    final lower = raw.toLowerCase();
+    if (lower.contains('http 413') ||
+        lower.contains('request entity too large') ||
+        lower.contains('payload too large')) {
+      return 'El comprobante es demasiado pesado para el servidor. Reduce el tamano de la imagen o usa un PDF mas liviano.';
+    }
+    if (lower.contains('extension de comprobante')) {
+      return 'Formato no permitido. Usa JPG, PNG o PDF.';
+    }
+    if (lower.contains('tipo de comprobante no permitido')) {
+      return 'No se pudo validar el comprobante. Revisa el archivo e intenta de nuevo.';
+    }
+    if (lower.contains('comprobante invalido') ||
+        lower.contains('no se pudo leer el archivo')) {
+      return 'El archivo adjunto no se puede leer.';
+    }
+    if (lower.contains('supera el tamano maximo') ||
+        lower.contains('supera el tamaño maximo') ||
+        lower.contains('supera el tamaño máximo')) {
+      return 'El comprobante supera el limite permitido.';
+    }
+    if (lower.contains('respuesta invalida del servidor')) {
+      return 'El servidor devolvio una respuesta no valida. Intenta con un comprobante mas liviano.';
+    }
+    return 'Error al procesar: $raw';
   }
 
 }
@@ -1454,6 +1678,7 @@ class _PaymentFormStep extends StatelessWidget {
   final Widget? evidencePreview;
   final String? error;
   final String? referenceError;
+  final bool isSubmitting;
   final ValueChanged<String>? onReferenceChanged;
   final ValueChanged<String>? onObservationChanged;
 
@@ -1474,6 +1699,7 @@ class _PaymentFormStep extends StatelessWidget {
     required this.evidenceLabel,
     required this.evidenceHint,
     required this.evidencePreview,
+    this.isSubmitting = false,
     this.error,
     this.referenceError,
     this.onReferenceChanged,
@@ -1555,8 +1781,8 @@ class _PaymentFormStep extends StatelessWidget {
         ],
         const SizedBox(height: 24),
         ElevatedButton(
-          onPressed: onSubmit,
-          child: const Text('Enviar reporte'),
+          onPressed: isSubmitting ? null : onSubmit,
+          child: Text(isSubmitting ? 'Enviando...' : 'Enviar reporte'),
         ),
       ],
     );
@@ -1565,7 +1791,14 @@ class _PaymentFormStep extends StatelessWidget {
 
 class _SuccessStep extends StatelessWidget {
   final VoidCallback onClose;
-  const _SuccessStep({required this.onClose});
+  final bool queued;
+  final String? clientUuid;
+
+  const _SuccessStep({
+    required this.onClose,
+    required this.queued,
+    required this.clientUuid,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -1586,7 +1819,7 @@ class _SuccessStep extends StatelessWidget {
             ),
             const SizedBox(height: 16),
             Text(
-              'Reporte enviado',
+              queued ? 'Reporte guardado en cola' : 'Reporte enviado',
               style: theme.textTheme.titleMedium?.copyWith(
                 fontWeight: FontWeight.w700,
               ),
@@ -1594,10 +1827,23 @@ class _SuccessStep extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             Text(
-              'Tu pago esta en conciliacion. Te avisaremos cuando se valide.',
+              queued
+                  ? 'Se reintentara automaticamente cuando vuelva la conexion.'
+                  : 'Tu pago esta en conciliacion. Te avisaremos cuando se valide.',
               textAlign: TextAlign.center,
               style: theme.textTheme.bodyMedium?.copyWith(color: muted),
             ),
+            if (clientUuid != null && clientUuid!.trim().isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text(
+                'ID soporte: ${clientUuid!.trim()}',
+                textAlign: TextAlign.center,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: muted,
+                  fontFeatures: const [FontFeature.tabularFigures()],
+                ),
+              ),
+            ],
             const SizedBox(height: 24),
             ElevatedButton(
               onPressed: onClose,

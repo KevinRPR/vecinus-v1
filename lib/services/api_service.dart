@@ -177,12 +177,15 @@ class ApiService {
     required String token,
     required String currentPassword,
     required String newPassword,
+    String? twoFactorCode,
   }) async {
     await _postProfile({
       'token': token,
       'accion': 'password',
       'password_actual': currentPassword,
       'password_nueva': newPassword,
+      if (twoFactorCode != null && twoFactorCode.trim().isNotEmpty)
+        'otp_code': twoFactorCode.trim(),
     }, expectUser: false);
   }
 
@@ -235,11 +238,14 @@ class ApiService {
   static Future<Map<String, dynamic>> setTwoFactorEnabled({
     required String token,
     required bool enabled,
+    String? twoFactorCode,
   }) async {
     final data = await _postProfile(
       {
         'token': token,
         'accion': enabled ? '2fa_enable' : '2fa_disable',
+        if (twoFactorCode != null && twoFactorCode.trim().isNotEmpty)
+          'otp_code': twoFactorCode.trim(),
       },
       expectUser: false,
     );
@@ -363,6 +369,27 @@ class ApiService {
         data['error'] ?? 'No se pudo consultar los pagos reportados');
   }
 
+  static Future<Map<String, dynamic>> getReportesMetricas({
+    required String token,
+    String? from,
+    String? to,
+    String? idCondominio,
+  }) async {
+    final payload = <String, dynamic>{
+      'token': token,
+      if (from != null && from.trim().isNotEmpty) 'from': from.trim(),
+      if (to != null && to.trim().isNotEmpty) 'to': to.trim(),
+      if (idCondominio != null && idCondominio.trim().isNotEmpty)
+        'id_condominio': idCondominio.trim(),
+    };
+    final response = await _postJson('metricas_reportes.php', payload);
+    final data = _decodeResponse(response);
+    if (response.statusCode == 200 && data['success'] == true) {
+      return data;
+    }
+    throw Exception(data['error'] ?? 'No se pudo cargar las metricas.');
+  }
+
   static Future<dynamic> _postProfile(
     Map<String, dynamic> payload, {
     bool expectUser = true,
@@ -389,6 +416,23 @@ class ApiService {
 
   static Map<String, dynamic> _decodeResponse(http.Response response) {
     final body = response.body;
+    final trimmedBody = body.trimLeft();
+    final lowerBody = trimmedBody.toLowerCase();
+
+    if (response.statusCode == 413 ||
+        lowerBody.contains('request entity too large') ||
+        lowerBody.contains('payload too large')) {
+      throw Exception(
+        'El servidor rechazo el archivo por tamano (HTTP 413). Reduce el comprobante e intenta de nuevo.',
+      );
+    }
+
+    if (trimmedBody.isEmpty) {
+      throw Exception(
+        'El servidor devolvio una respuesta vacia (HTTP ${response.statusCode}).',
+      );
+    }
+
     try {
       final decoded = jsonDecode(body);
       if (decoded is Map<String, dynamic>) {
@@ -402,25 +446,24 @@ class ApiService {
           context: 'api_decode_error',
           data: {
             'status_code': response.statusCode,
-            'body_prefix': body.trimLeft().substring(
-                  0,
-                  body.trimLeft().length.clamp(0, 120).toInt(),
-                ),
+            'body_prefix': trimmedBody.substring(
+              0,
+              trimmedBody.length.clamp(0, 120).toInt(),
+            ),
           },
         ),
       );
-      final trimmed = body.trimLeft().toLowerCase();
-      if (trimmed.startsWith('<!doctype') || trimmed.startsWith('<html')) {
-        if (trimmed.contains('cloudflare')) {
+      if (lowerBody.startsWith('<!doctype') || lowerBody.startsWith('<html')) {
+        if (lowerBody.contains('cloudflare')) {
           throw Exception(
-            'Cloudflare está bloqueando la app. Permite el endpoint en el WAF o usa un subdominio de API sin challenge.',
+            'Cloudflare esta bloqueando la app. Permite el endpoint en el WAF o usa un subdominio de API sin challenge.',
           );
         }
         throw Exception(
-          'El servidor devolvió HTML en lugar de JSON. Revisa el endpoint o la configuración del servidor.',
+          'El servidor devolvio HTML en lugar de JSON. Revisa el endpoint o la configuracion del servidor.',
         );
       }
-      throw Exception('Respuesta inválida del servidor.');
+      throw Exception('Respuesta invalida del servidor.');
     }
   }
 }

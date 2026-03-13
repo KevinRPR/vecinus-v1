@@ -147,6 +147,7 @@ function ensure_columns(PDO $conn): void
         ALTER TABLE pago_reportado_app
             ADD COLUMN IF NOT EXISTS estado TEXT NOT NULL DEFAULT 'EN_PROCESO',
             ADD COLUMN IF NOT EXISTS motivo_rechazo TEXT NULL,
+            ADD COLUMN IF NOT EXISTS comentario_admin TEXT NULL,
             ADD COLUMN IF NOT EXISTS aprobado_at TIMESTAMP NULL,
             ADD COLUMN IF NOT EXISTS rechazado_at TIMESTAMP NULL,
             ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
@@ -215,19 +216,29 @@ function save_evidence_file(string $clientUuid, string $rawBase64, string $ext):
         'pdf' => 'application/pdf',
     ];
     $expectedMime = $mimeByExt[$ext] ?? null;
-    $finfo = new finfo(FILEINFO_MIME_TYPE);
-    $detectedMime = $finfo->buffer($binary);
+    $detectedMime = detect_binary_mime($binary);
+    $mimeAliases = [
+        'image/jpg' => 'image/jpeg',
+        'image/pjpeg' => 'image/jpeg',
+        'application/x-pdf' => 'application/pdf',
+    ];
+    if (is_string($detectedMime) && isset($mimeAliases[$detectedMime])) {
+        $detectedMime = $mimeAliases[$detectedMime];
+    }
     if ($expectedMime === null || $detectedMime !== $expectedMime) {
         throw new Exception('Tipo de comprobante no permitido.');
     }
 
     $dir = evidence_directory();
     $filename = $clientUuid . '.' . $ext;
-    $path = $dir . '/' . $filename;
-    file_put_contents($path, $binary, LOCK_EX);
+    $absolutePath = $dir . '/' . $filename;
+    $written = file_put_contents($absolutePath, $binary, LOCK_EX);
+    if ($written === false) {
+        throw new Exception('No se pudo guardar el comprobante.');
+    }
 
     $relative = 'uploads/evidencias/' . $filename;
-    return [$path, build_public_url($relative)];
+    return [$relative, build_public_url($relative)];
 }
 
 try {
@@ -295,7 +306,7 @@ try {
 
         // Idempotencia
         $stmtDup = $conn->prepare("
-            SELECT id, estado, created_at, client_uuid, evidencia_url, motivo_rechazo
+            SELECT id, estado, created_at, client_uuid, evidencia_url, motivo_rechazo, comentario_admin
             FROM pago_reportado_app
             WHERE client_uuid = :uuid
             LIMIT 1
@@ -311,6 +322,7 @@ try {
                 "client_uuid" => $dupRow["client_uuid"],
                 "evidencia_url" => $dupRow["evidencia_url"] ?? null,
                 "motivo_rechazo" => $dupRow["motivo_rechazo"] ?? null,
+                "comentario_admin" => $dupRow["comentario_admin"] ?? $dupRow["motivo_rechazo"] ?? null,
             ]);
         }
 
@@ -392,6 +404,13 @@ try {
             "observacion" => $observacion,
             "resumen" => $resumen,
         ];
+        if (!empty($evidUrl)) {
+            $det["comprobante"] = [
+                "url" => $evidUrl,
+                "path" => $evidPath,
+                "ext" => $comprobanteExt,
+            ];
+        }
 
         $stmt->execute([
             ":usr" => $userId,
@@ -428,7 +447,12 @@ try {
     } else {
         respond_error("Accion no soportada.", 400);
     }
-} catch (Exception $e) {
+} catch (Throwable $e) {
+    log_error('reportar_pago failed', [
+        'accion' => $accion ?? null,
+        'user_id' => $userId ?? null,
+        'error' => $e->getMessage(),
+    ]);
     $lower = strtolower($e->getMessage());
     $status = (strpos($lower, 'token') !== false) ? 401 : 500;
     respond_error($e->getMessage(), $status);

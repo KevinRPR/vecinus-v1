@@ -1,3 +1,5 @@
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 
 import '../animations/transitions.dart';
@@ -44,60 +46,63 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
-      appBar: AppBar(
-        title: const Text('Alertas'),
-        actions: [
-          AppIconButton(
-            icon: IconsRounded.done_all,
-            tooltip: 'Marcar todo',
-            onPressed: _items.isEmpty ? null : _clearAllNotifications,
-          ),
-          const SizedBox(width: 12),
-        ],
-      ),
-      body: RefreshIndicator(
-        onRefresh: _reload,
-        child: FadeSlideTransition(
-          beginOffset: const Offset(0, 0.02),
-          child: _items.isEmpty
-              ? ListView(
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
-                  children: [
-                    AppEmptyState(
-                      icon: IconsRounded.notifications_off,
-                      title: 'Sin alertas por ahora.',
-                      subtitle: 'Te avisaremos si aparece algo nuevo.',
-                      actionLabel: 'Actualizar',
-                      onAction: () => _reload(),
-                    ),
-                  ],
-                )
-              : ListView.builder(
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
-                  itemCount: listItems.length,
-                  itemBuilder: (context, index) {
-                    final item = listItems[index];
-                    if (item.isHeader) {
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 10),
-                        child: _sectionHeader(item.header!, textMuted),
-                      );
-                    }
-                    return Padding(
-                      padding: const EdgeInsets.only(bottom: 12),
-                      child: _notificationTile(
-                        item.item!,
-                        cardColor,
-                        shadowColor,
-                        textMuted,
-                        item.timeLabel!,
-                        reduceEffects,
-                      ),
-                    );
-                  },
+      body: SafeArea(
+        bottom: false,
+        child: Column(
+          children: [
+            _AlertsHeader(
+              isDark: isDark,
+              totalAlerts: _items.length,
+              onClearAll: _items.isEmpty ? null : _clearAllNotifications,
+            ),
+            Expanded(
+              child: RefreshIndicator(
+                onRefresh: _reload,
+                child: FadeSlideTransition(
+                  beginOffset: const Offset(0, 0.02),
+                  child: _items.isEmpty
+                      ? ListView(
+                          physics: const AlwaysScrollableScrollPhysics(),
+                          padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+                          children: [
+                            AppEmptyState(
+                              icon: IconsRounded.notifications_off,
+                              title: 'Sin alertas por ahora.',
+                              subtitle: 'Te avisaremos si aparece algo nuevo.',
+                              actionLabel: 'Actualizar',
+                              onAction: () => _reload(),
+                            ),
+                          ],
+                        )
+                      : ListView.builder(
+                          physics: const AlwaysScrollableScrollPhysics(),
+                          padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+                          itemCount: listItems.length,
+                          itemBuilder: (context, index) {
+                            final item = listItems[index];
+                            if (item.isHeader) {
+                              return Padding(
+                                padding: const EdgeInsets.only(bottom: 10),
+                                child: _sectionHeader(item.header!, textMuted),
+                              );
+                            }
+                            return Padding(
+                              padding: const EdgeInsets.only(bottom: 12),
+                              child: _notificationTile(
+                                item.item!,
+                                cardColor,
+                                shadowColor,
+                                textMuted,
+                                item.timeLabel!,
+                                reduceEffects,
+                              ),
+                            );
+                          },
+                        ),
                 ),
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -509,6 +514,77 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   String _formatFullDate(DateTime time) {
     String two(int n) => n.toString().padLeft(2, '0');
     return '${two(time.day)}/${two(time.month)}/${time.year} ${two(time.hour)}:${two(time.minute)}';
+  }
+}
+
+class _AlertsHeader extends StatelessWidget {
+  final bool isDark;
+  final int totalAlerts;
+  final VoidCallback? onClearAll;
+
+  const _AlertsHeader({
+    required this.isDark,
+    required this.totalAlerts,
+    required this.onClearAll,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final borderColor = isDark
+        ? Colors.white.withValues(alpha: 0.08)
+        : Colors.black.withValues(alpha: 0.06);
+    final backgroundColor = theme.scaffoldBackgroundColor.withValues(alpha: 0.92);
+    final titleStyle = theme.appBarTheme.titleTextStyle ??
+        theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700);
+    final textMuted = theme.textTheme.bodySmall?.color?.withValues(alpha: 0.7) ??
+        (isDark ? AppColors.darkTextMuted : AppColors.textMuted);
+    final blurSigma = AppPerf.blurSigma(context, 18);
+    final subtitle = totalAlerts == 1
+        ? '1 alerta reciente'
+        : '$totalAlerts alertas recientes';
+
+    final content = Container(
+      decoration: BoxDecoration(
+        color: backgroundColor,
+        border: Border(bottom: BorderSide(color: borderColor)),
+      ),
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text('Alertas', style: titleStyle),
+              ),
+              AppIconButton(
+                icon: IconsRounded.done_all,
+                tooltip: 'Marcar todo',
+                onPressed: onClearAll,
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            subtitle,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: textMuted,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+
+    return ClipRect(
+      child: blurSigma == 0
+          ? content
+          : BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: blurSigma, sigmaY: blurSigma),
+              child: content,
+            ),
+    );
   }
 }
 

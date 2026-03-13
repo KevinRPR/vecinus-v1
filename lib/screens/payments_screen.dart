@@ -6,6 +6,7 @@ import '../animations/shimmers.dart';
 import '../animations/transitions.dart';
 import '../models/inmueble.dart';
 import '../preferences_controller.dart';
+import '../services/payment_report_status_sync_service.dart';
 import '../services/security_service.dart';
 import '../theme/app_theme.dart';
 import '../ui_system/components/app_empty_state.dart';
@@ -39,6 +40,16 @@ class PaymentsScreen extends StatefulWidget {
 
 class _PaymentsScreenState extends State<PaymentsScreen> {
   _PaymentFilter _filter = _PaymentFilter.pending;
+
+  Future<void> _handleRefresh() async {
+    await widget.onRefresh();
+    await PaymentReportStatusSyncService.sync(
+      token: widget.token,
+      trigger: 'payments_refresh',
+    );
+    if (!mounted) return;
+    setState(() {});
+  }
 
   double get _totalDeuda => widget.inmuebles.fold(
         0,
@@ -95,7 +106,7 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
         return Scaffold(
           backgroundColor: background,
           body: RefreshIndicator(
-            onRefresh: widget.onRefresh,
+            onRefresh: _handleRefresh,
             child: FadeSlideTransition(
               beginOffset: const Offset(0, 0.02),
               child: CustomScrollView(
@@ -375,7 +386,9 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
       title = 'Aún no tienes inmuebles.';
       subtitle = 'Cuando agregues uno, verás sus pagos aquí.';
       actionLabel = 'Actualizar';
-      onAction = () => widget.onRefresh();
+      onAction = () {
+        _handleRefresh();
+      };
     } else {
       switch (_filter) {
         case _PaymentFilter.pending:
@@ -394,7 +407,9 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
           title = 'No hay pagos para mostrar.';
           subtitle = 'Intenta actualizar para ver los ultimos datos.';
           actionLabel = 'Actualizar';
-          onAction = () => widget.onRefresh();
+          onAction = () {
+            _handleRefresh();
+          };
           break;
       }
     }
@@ -815,7 +830,7 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
       ),
     );
     if (!mounted) return;
-    await widget.onRefresh();
+    await _handleRefresh();
   }
 
   String _formatCurrency(double value) => formatMoney(value);

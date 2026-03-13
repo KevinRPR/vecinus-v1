@@ -1,3 +1,23 @@
+class PaymentReportTimelineEvent {
+  final String key;
+  final String label;
+  final DateTime? at;
+
+  const PaymentReportTimelineEvent({
+    required this.key,
+    required this.label,
+    required this.at,
+  });
+
+  factory PaymentReportTimelineEvent.fromJson(Map<String, dynamic> json) {
+    return PaymentReportTimelineEvent(
+      key: (json['key'] ?? '').toString(),
+      label: (json['label'] ?? '').toString(),
+      at: DateTime.tryParse((json['at'] ?? '').toString()),
+    );
+  }
+}
+
 class PaymentReport {
   final String id;
   final String idInmueble;
@@ -7,8 +27,11 @@ class PaymentReport {
   final double totalBase;
   final int? monedaBase;
   final String estado;
+  final String? estadoLabel;
+  final String? comentarioAdmin;
   final String? motivoRechazo;
   final String? evidenciaUrl;
+  final String? evidenciaPath;
   final DateTime? createdAt;
   final DateTime? aprobadoAt;
   final DateTime? rechazadoAt;
@@ -17,6 +40,7 @@ class PaymentReport {
   final double? pagosTotalBase;
   final double? pendienteTotalBase;
   final bool? cubreTotalEstimado;
+  final List<PaymentReportTimelineEvent> timeline;
 
   PaymentReport({
     required this.id,
@@ -27,8 +51,11 @@ class PaymentReport {
     required this.totalBase,
     this.monedaBase,
     required this.estado,
+    this.estadoLabel,
+    this.comentarioAdmin,
     this.motivoRechazo,
     this.evidenciaUrl,
+    this.evidenciaPath,
     this.createdAt,
     this.aprobadoAt,
     this.rechazadoAt,
@@ -37,6 +64,7 @@ class PaymentReport {
     this.pagosTotalBase,
     this.pendienteTotalBase,
     this.cubreTotalEstimado,
+    this.timeline = const [],
   });
 
   factory PaymentReport.fromJson(Map<String, dynamic> json) {
@@ -61,8 +89,11 @@ class PaymentReport {
           ? json['moneda_base'] as int
           : int.tryParse(json['moneda_base']?.toString() ?? ''),
       estado: (json['estado'] ?? '').toString().toUpperCase(),
+      estadoLabel: json['estado_label']?.toString(),
+      comentarioAdmin: json['comentario_admin']?.toString(),
       motivoRechazo: json['motivo_rechazo']?.toString(),
       evidenciaUrl: json['evidencia_url']?.toString(),
+      evidenciaPath: json['evidencia_path']?.toString(),
       createdAt: parseDate(json['created_at']),
       aprobadoAt: parseDate(json['aprobado_at']),
       rechazadoAt: parseDate(json['rechazado_at']),
@@ -73,6 +104,10 @@ class PaymentReport {
       cubreTotalEstimado: json['cubre_total_estimado'] is bool
           ? json['cubre_total_estimado'] as bool
           : (json['cubre_total_estimado']?.toString().toLowerCase() == 'true'),
+      timeline: (json['timeline'] as List? ?? const [])
+          .whereType<Map<String, dynamic>>()
+          .map(PaymentReportTimelineEvent.fromJson)
+          .toList(),
     );
   }
 }

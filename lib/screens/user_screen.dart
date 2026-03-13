@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
@@ -14,7 +15,9 @@ import '../services/profile_security_service.dart';
 import '../services/security_service.dart';
 import '../preferences_controller.dart';
 import '../theme_controller.dart';
+import '../ui_system/components/app_icon_button.dart';
 import '../ui_system/feedback/app_haptics.dart';
+import '../ui_system/perf/app_perf.dart';
 import '../theme/app_theme.dart';
 import 'login_screen.dart';
 
@@ -121,6 +124,39 @@ class _UserScreenState extends State<UserScreen> {
     );
   }
 
+  String _errorMessage(Object error) {
+    final raw = error.toString().trim();
+    const prefix = 'Exception: ';
+    if (raw.startsWith(prefix)) {
+      return raw.substring(prefix.length);
+    }
+    return raw;
+  }
+
+  Future<bool> _runOtpValidationFlow({
+    required BuildContext sheetContext,
+    required String cancelledMessage,
+    required Future<void> Function(String code) onValidate,
+  }) async {
+    final request = await ProfileSecurityService.requestTwoFactorCode(
+      token: widget.token,
+      channel: 'email',
+    );
+    if (!sheetContext.mounted) return false;
+
+    final verified = await _promptOtpCode(
+      sheetContext: sheetContext,
+      targetHint: request.targetHint,
+      debugCode: request.debugCode,
+      expiresAt: request.expiresAt,
+      onValidate: onValidate,
+    );
+    if (!verified) {
+      _showSnack(cancelledMessage);
+    }
+    return verified;
+  }
+
   Future<void> _toggleTwoFactor({
     required bool enabled,
     required BuildContext sheetContext,
@@ -142,55 +178,70 @@ class _UserScreenState extends State<UserScreen> {
         _showSnack('No se pudo verificar tu identidad.');
         return;
       }
+      if (!sheetContext.mounted) return;
 
       if (!enabled) {
+        if (securityPrefs.twoFactorEnabled) {
+          try {
+            final verified = await _runOtpValidationFlow(
+              sheetContext: sheetContext,
+              cancelledMessage: 'Desactivacion de 2FA cancelada.',
+              onValidate: (code) async {
+                await ProfileSecurityService.setTwoFactorEnabled(
+                  token: widget.token,
+                  enabled: false,
+                  twoFactorCode: code,
+                );
+              },
+            );
+            if (!verified) return;
+          } catch (e) {
+            _showSnack('No se pudo solicitar el codigo OTP: ${_errorMessage(e)}');
+            return;
+          }
+          await _setTwoFactorPreference(false);
+          _showTwoFactorStatusNotice(enabled: false);
+          return;
+        }
+
         try {
           await ProfileSecurityService.setTwoFactorEnabled(
             token: widget.token,
             enabled: false,
           );
           await _setTwoFactorPreference(false);
-          _showSnack('2FA desactivado.');
+          _showTwoFactorStatusNotice(enabled: false);
         } catch (e) {
-          _showSnack('No se pudo desactivar 2FA: $e');
+          _showSnack('No se pudo desactivar 2FA: ${_errorMessage(e)}');
         }
         return;
       }
 
       try {
-        final request = await ProfileSecurityService.requestTwoFactorCode(
-          token: widget.token,
-          channel: 'email',
-        );
-
-        if (!sheetContext.mounted) return;
-        final code = await _promptOtpCode(
+        final verified = await _runOtpValidationFlow(
           sheetContext: sheetContext,
-          targetHint: request.targetHint,
-          debugCode: request.debugCode,
-          expiresAt: request.expiresAt,
+          cancelledMessage: 'Activacion de 2FA cancelada.',
+          onValidate: (code) async {
+            await ProfileSecurityService.verifyTwoFactorCode(
+              token: widget.token,
+              code: code,
+            );
+          },
         );
-        if (code == null || code.isEmpty) {
-          _showSnack('Activacion de 2FA cancelada.');
-          return;
-        }
-
-        await ProfileSecurityService.verifyTwoFactorCode(
-          token: widget.token,
-          code: code,
-        );
+        if (!verified) return;
         await _setTwoFactorPreference(true);
-        _showSnack('2FA activado correctamente.');
+        _showTwoFactorStatusNotice(enabled: true);
       } catch (e) {
-        _showSnack('No se pudo activar 2FA: $e');
+        _showSnack('No se pudo activar 2FA: ${_errorMessage(e)}');
       }
     } finally {
       _processingTwoFactor.value = false;
     }
   }
 
-  Future<String?> _promptOtpCode({
+  Future<bool> _promptOtpCode({
     required BuildContext sheetContext,
+    required Future<void> Function(String code) onValidate,
     String? targetHint,
     String? debugCode,
     DateTime? expiresAt,
@@ -199,6 +250,8 @@ class _UserScreenState extends State<UserScreen> {
     String? currentTargetHint = targetHint;
     String? currentDebugCode = debugCode;
     DateTime? currentExpiresAt = expiresAt;
+    String? validationError;
+    bool validatingCode = false;
     var resendAvailableAt = DateTime.now().add(const Duration(minutes: 1));
     bool sendingResend = false;
     Timer? ticker;
@@ -208,7 +261,7 @@ class _UserScreenState extends State<UserScreen> {
       return diff > 0 ? diff : 0;
     }
 
-    final result = await showModalBottomSheet<String>(
+    final result = await showModalBottomSheet<bool>(
       context: sheetContext,
       isScrollControlled: true,
       backgroundColor: Theme.of(sheetContext).cardColor,
@@ -281,25 +334,76 @@ class _UserScreenState extends State<UserScreen> {
                     TextField(
                       keyboardType: TextInputType.number,
                       maxLength: 6,
-                      onChanged: (value) => otpCode = value,
+                      onChanged: (value) {
+                        otpCode = value;
+                        if (validationError != null) {
+                          setModalState(() => validationError = null);
+                        }
+                      },
                       decoration: const InputDecoration(
                         labelText: 'Codigo OTP',
                         hintText: 'Ejemplo: 123456',
                       ),
                     ),
+                    if (validationError != null) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        validationError!,
+                        style: const TextStyle(
+                          color: AppColors.error,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 8),
                     SizedBox(
                       width: double.infinity,
                       child: ElevatedButton(
-                        onPressed: () =>
-                            Navigator.of(context).pop(otpCode.trim()),
-                        child: const Text('Validar codigo'),
+                        onPressed: validatingCode
+                            ? null
+                            : () async {
+                                final code = otpCode.trim();
+                                if (code.length != 6 ||
+                                    !RegExp(r'^\d{6}$').hasMatch(code)) {
+                                  setModalState(() {
+                                    validationError =
+                                        'Ingresa un codigo valido de 6 digitos.';
+                                  });
+                                  return;
+                                }
+                                setModalState(() {
+                                  validationError = null;
+                                  validatingCode = true;
+                                });
+                                try {
+                                  await onValidate(code);
+                                  if (!context.mounted) return;
+                                  Navigator.of(context).pop(true);
+                                } catch (e) {
+                                  if (!context.mounted) return;
+                                  setModalState(() {
+                                    validationError = _errorMessage(e);
+                                    validatingCode = false;
+                                  });
+                                }
+                              },
+                        child: validatingCode
+                            ? const SizedBox(
+                                height: 18,
+                                width: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Text('Validar codigo'),
                       ),
                     ),
                     Align(
                       alignment: Alignment.centerLeft,
                       child: TextButton(
-                        onPressed: canResend
+                        onPressed: (canResend && !validatingCode)
                             ? () async {
                                 setModalState(() => sendingResend = true);
                                 try {
@@ -314,10 +418,11 @@ class _UserScreenState extends State<UserScreen> {
                                   currentExpiresAt = request.expiresAt;
                                   resendAvailableAt = DateTime.now()
                                       .add(const Duration(minutes: 1));
+                                  validationError = null;
                                   _showSnack('Codigo reenviado.');
                                 } catch (e) {
                                   _showSnack(
-                                      'No se pudo reenviar el codigo: $e');
+                                      'No se pudo reenviar el codigo: ${_errorMessage(e)}');
                                 } finally {
                                   if (context.mounted) {
                                     setModalState(() => sendingResend = false);
@@ -331,7 +436,9 @@ class _UserScreenState extends State<UserScreen> {
                     Align(
                       alignment: Alignment.centerRight,
                       child: TextButton(
-                        onPressed: () => Navigator.of(context).pop(),
+                        onPressed: validatingCode
+                            ? null
+                            : () => Navigator.of(context).pop(false),
                         child: const Text('Cancelar'),
                       ),
                     ),
@@ -344,7 +451,7 @@ class _UserScreenState extends State<UserScreen> {
       },
     );
     ticker?.cancel();
-    return result;
+    return result == true;
   }
 
   Future<bool> _saveProfile() async {
@@ -390,7 +497,9 @@ class _UserScreenState extends State<UserScreen> {
     }
   }
 
-  Future<bool> _changePassword() async {
+  Future<bool> _changePassword({
+    required BuildContext sheetContext,
+  }) async {
     if (_changingPassword) return false;
     final actual = _passwordActualController.text;
     final nueva = _passwordNuevaController.text;
@@ -420,21 +529,39 @@ class _UserScreenState extends State<UserScreen> {
       _showSnack('No se pudo verificar tu identidad.');
       return false;
     }
+    if (!sheetContext.mounted) return false;
 
     setState(() => _changingPassword = true);
     try {
-      await ApiService.changePassword(
-        token: widget.token,
-        currentPassword: actual,
-        newPassword: nueva,
-      );
+      if (securityPrefs.twoFactorEnabled) {
+        final verified = await _runOtpValidationFlow(
+          sheetContext: sheetContext,
+          cancelledMessage: 'Cambio de contrasena cancelado.',
+          onValidate: (code) async {
+            await ApiService.changePassword(
+              token: widget.token,
+              currentPassword: actual,
+              newPassword: nueva,
+              twoFactorCode: code,
+            );
+          },
+        );
+        if (!verified) return false;
+      } else {
+        await ApiService.changePassword(
+          token: widget.token,
+          currentPassword: actual,
+          newPassword: nueva,
+        );
+      }
+
       _passwordActualController.clear();
       _passwordNuevaController.clear();
       _passwordConfirmController.clear();
       _showSnack('Contrasena actualizada correctamente.');
       return true;
     } catch (e) {
-      _showSnack('No se pudo actualizar la contraseña: $e');
+      _showSnack('No se pudo actualizar la contrasena: ${_errorMessage(e)}');
       return false;
     } finally {
       setState(() => _changingPassword = false);
@@ -493,48 +620,128 @@ class _UserScreenState extends State<UserScreen> {
     );
   }
 
+  void _showTwoFactorStatusNotice({
+    required bool enabled,
+  }) {
+    if (!mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final background = enabled
+        ? (isDark ? AppColors.brandBlue700 : AppColors.brandBlue600)
+        : (isDark ? AppColors.sunOrange600 : AppColors.sunOrange500);
+    final icon = enabled ? IconsRounded.verified_user : IconsRounded.security;
+    final title = enabled
+        ? 'La autenticacion en 2 pasos ha sido activada'
+        : 'La autenticacion en 2 pasos ha sido desactivada';
+    final subtitle = enabled
+        ? 'Tu cuenta ahora esta protegida.'
+        : 'La proteccion adicional fue desactivada.';
+
+    messenger.hideCurrentSnackBar();
+    messenger.showSnackBar(
+      SnackBar(
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        duration: const Duration(seconds: 4),
+        content: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          decoration: BoxDecoration(
+            color: background,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.2),
+                blurRadius: 10,
+                offset: const Offset(0, 6),
+              ),
+            ],
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.16),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(
+                  icon,
+                  color: Colors.white,
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 13,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final background = Theme.of(context).scaffoldBackgroundColor;
 
     final scaffold = Scaffold(
       backgroundColor: background,
-      appBar: AppBar(
-        title: const Text('Mi perfil'),
-        automaticallyImplyLeading: !widget.embedded,
-        leading: widget.embedded
-            ? null
-            : IconButton(
-                icon: const Icon(IconsRounded.arrow_back),
-                tooltip: 'Volver',
-                onPressed: () {
-                  final user = _user ?? widget.user;
-                  widget.onUserUpdated?.call(user);
-                  Navigator.pop(context, user);
-                },
-              ),
-      ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : RefreshIndicator(
-              onRefresh: _syncProfile,
-              child: ListView(
-                physics: const AlwaysScrollableScrollPhysics(),
-                padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
-                children: [
-                  FadeSlideTransition(
-                    beginOffset: const Offset(0, 0.02),
-                    child: _buildProfileCard(context),
-                  ),
-                  const SizedBox(height: 18),
-                  _buildSettingsSection(context),
-                  const SizedBox(height: 18),
-                  _buildSupportCard(context),
-                  const SizedBox(height: 12),
-                  _buildVersionFooter(context),
-                ],
-              ),
+      body: SafeArea(
+        bottom: false,
+        child: Column(
+          children: [
+            _buildProfileHeader(context),
+            Expanded(
+              child: _loading
+                  ? const Center(child: CircularProgressIndicator())
+                  : RefreshIndicator(
+                      onRefresh: _syncProfile,
+                      child: ListView(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+                        children: [
+                          FadeSlideTransition(
+                            beginOffset: const Offset(0, 0.02),
+                            child: _buildProfileCard(context),
+                          ),
+                          const SizedBox(height: 18),
+                          _buildSettingsSection(context),
+                          const SizedBox(height: 18),
+                          _buildSupportCard(context),
+                          const SizedBox(height: 12),
+                          _buildVersionFooter(context),
+                        ],
+                      ),
+                    ),
             ),
+          ],
+        ),
+      ),
     );
 
     if (widget.embedded) {
@@ -550,6 +757,108 @@ class _UserScreenState extends State<UserScreen> {
         Navigator.pop(context, user);
       },
       child: scaffold,
+    );
+  }
+
+  Widget _buildProfileHeader(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final borderColor = isDark
+        ? Colors.white.withValues(alpha: 0.08)
+        : Colors.black.withValues(alpha: 0.06);
+    final backgroundColor = theme.scaffoldBackgroundColor.withValues(alpha: 0.92);
+    final titleStyle = theme.appBarTheme.titleTextStyle ??
+        theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700);
+    final textMuted = theme.textTheme.bodySmall?.color?.withValues(alpha: 0.7) ??
+        (isDark ? AppColors.darkTextMuted : AppColors.textMuted);
+    final blurSigma = AppPerf.blurSigma(context, 18);
+    final user = _user ?? widget.user;
+
+    final content = Container(
+      decoration: BoxDecoration(
+        color: backgroundColor,
+        border: Border(bottom: BorderSide(color: borderColor)),
+      ),
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              if (!widget.embedded) ...[
+                AppIconButton(
+                  icon: IconsRounded.arrow_back,
+                  tooltip: 'Volver',
+                  onPressed: () {
+                    final current = _user ?? widget.user;
+                    widget.onUserUpdated?.call(current);
+                    Navigator.pop(context, current);
+                  },
+                ),
+                const SizedBox(width: 8),
+              ],
+              Expanded(
+                child: Text('Mi perfil', style: titleStyle),
+              ),
+              _buildHeaderAvatar(user, isDark),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            user.displayName,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: textMuted,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+
+    return ClipRect(
+      child: blurSigma == 0
+          ? content
+          : BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: blurSigma, sigmaY: blurSigma),
+              child: content,
+            ),
+    );
+  }
+
+  Widget _buildHeaderAvatar(User user, bool isDark) {
+    final avatarUrl = user.avatarUrl;
+    final borderColor = isDark ? AppColors.darkBorder : AppColors.border;
+    return SizedBox(
+      height: 42,
+      width: 42,
+      child: Container(
+        padding: const EdgeInsets.all(2),
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          border: Border.all(color: borderColor, width: 2),
+        ),
+        child: ClipOval(
+          child: avatarUrl != null && avatarUrl.isNotEmpty
+              ? Image.network(
+                  avatarUrl,
+                  fit: BoxFit.cover,
+                  errorBuilder: (context, error, stackTrace) {
+                    return _headerAvatarFallback();
+                  },
+                )
+              : _headerAvatarFallback(),
+        ),
+      ),
+    );
+  }
+
+  Widget _headerAvatarFallback() {
+    return Container(
+      color: AppColors.brandBlue600.withValues(alpha: 0.12),
+      child: const Icon(
+        IconsRounded.person,
+        color: AppColors.brandBlue600,
+      ),
     );
   }
 
@@ -1697,7 +2006,9 @@ class _UserScreenState extends State<UserScreen> {
                               onPressed: _changingPassword
                                   ? null
                                   : () async {
-                                      final saved = await _changePassword();
+                                      final saved = await _changePassword(
+                                        sheetContext: sheetContext,
+                                      );
                                       if (!mounted) return;
                                       if (!sheetContext.mounted) return;
                                       if (saved) {

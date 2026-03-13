@@ -2,6 +2,15 @@
 
 require_once(__DIR__ . "/config/env.php");
 
+if (!function_exists('str_starts_with')) {
+    function str_starts_with(string $haystack, string $needle): bool {
+        if ($needle === '') {
+            return true;
+        }
+        return strpos($haystack, $needle) === 0;
+    }
+}
+
 function request_id(): string {
     static $id = null;
     if ($id === null) {
@@ -21,12 +30,21 @@ function log_error(string $message, array $context = []): void {
 function apply_cors(): void {
     $origin = $_SERVER['HTTP_ORIGIN'] ?? '';
     $allowed = env_list('CORS_ALLOWED_ORIGINS');
-    $allowAny = in_array('*', $allowed, true);
+    $appEnv = strtolower(trim((string)env_value('APP_ENV', 'production')));
+    $allowAnyConfigured = in_array('*', $allowed, true);
+    $allowAny = $allowAnyConfigured && $appEnv !== 'production';
+
+    if ($allowAnyConfigured && $appEnv === 'production') {
+        log_error('CORS wildcard blocked in production', [
+            'origin' => $origin,
+        ]);
+    }
 
     if ($origin !== '' && ($allowAny || in_array($origin, $allowed, true))) {
         header("Access-Control-Allow-Origin: {$origin}");
         header("Vary: Origin");
     }
+    header('X-Request-Id: ' . request_id());
     header("Access-Control-Allow-Methods: POST, OPTIONS");
     header("Access-Control-Allow-Headers: Content-Type, Authorization");
 }
@@ -44,6 +62,28 @@ function api_base_url(): string {
     $scriptDir = str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'] ?? ''));
     $scriptDir = rtrim($scriptDir, '/');
     return rtrim($scheme . '://' . $host . ($scriptDir ? '/' . ltrim($scriptDir, '/') : ''), '/') . '/';
+}
+
+function detect_binary_mime(string $binary): ?string {
+    if (class_exists('finfo')) {
+        $finfo = new finfo(FILEINFO_MIME_TYPE);
+        $detected = $finfo->buffer($binary);
+        if (is_string($detected) && trim($detected) !== '') {
+            return strtolower(trim($detected));
+        }
+    }
+
+    $head8 = substr($binary, 0, 8);
+    if (substr($binary, 0, 3) === "\xFF\xD8\xFF") {
+        return 'image/jpeg';
+    }
+    if ($head8 === "\x89PNG\x0D\x0A\x1A\x0A") {
+        return 'image/png';
+    }
+    if (substr($binary, 0, 5) === '%PDF-') {
+        return 'application/pdf';
+    }
+    return null;
 }
 
 function avatar_relative_path($userId): string {
@@ -80,8 +120,7 @@ function save_avatar_from_base64($userId, string $rawData): string {
         throw new Exception('La imagen supera el tamano maximo permitido.');
     }
 
-    $finfo = new finfo(FILEINFO_MIME_TYPE);
-    $mime = $finfo->buffer($binary);
+    $mime = detect_binary_mime($binary);
     $allowed = ['image/jpeg', 'image/pjpeg'];
     if (!in_array($mime, $allowed, true)) {
         throw new Exception('Formato de imagen no permitido.');
@@ -95,15 +134,27 @@ function save_avatar_from_base64($userId, string $rawData): string {
 
 function respond_success(array $payload = []): void {
     http_response_code(200);
-    echo json_encode(array_merge(["success" => true], $payload));
+    header('X-Request-Id: ' . request_id());
+    echo json_encode(array_merge([
+        "success" => true,
+        "request_id" => request_id(),
+    ], $payload));
     exit;
 }
 
 function respond_error(string $message, int $status = 400): void {
     http_response_code($status);
-    $payload = ["error" => $message];
-    if (env_bool('APP_DEBUG', false)) {
-        $payload["request_id"] = request_id();
+    header('X-Request-Id: ' . request_id());
+    $payload = [
+        "error" => $message,
+        "request_id" => request_id(),
+    ];
+    if ($status >= 500) {
+        log_error('Unhandled API error response', [
+            'status' => $status,
+            'message' => $message,
+            'path' => $_SERVER['REQUEST_URI'] ?? '',
+        ]);
     }
     echo json_encode($payload);
     exit;
